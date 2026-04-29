@@ -39,7 +39,6 @@ Thumbs.db
 *.swo
 
 # Generated experiment artifacts.
-data/
 results/
 checkpoints/
 *.pt
