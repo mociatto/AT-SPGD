@@ -1,3 +1,10 @@
+# %%
+!git clone https://github.com/mociatto/AT-SPGD.git
+
+# %%
+%cd AT-SPGD
+
+# %%
 from __future__ import annotations
 
 # %%
@@ -86,4 +93,4 @@ results_df = run_experiments()
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
 results_df.to_csv(BASELINE_CSV, index=False)
-results_df
+display(results_df)

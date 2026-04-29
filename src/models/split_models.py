@@ -13,6 +13,8 @@ from torchvision.models import (
 )
 
 EMB_DIM = 128
+IMAGENET_MEAN = (0.485, 0.456, 0.406)
+IMAGENET_STD = (0.229, 0.224, 0.225)
 
 
 def _freeze_module(module: nn.Module) -> None:
@@ -80,11 +82,27 @@ class VFLServer(nn.Module):
 
 
 class FullVFLModel(nn.Module):
-    def __init__(self, image_client: nn.Module, vfl_server: nn.Module) -> None:
+    def __init__(
+        self,
+        image_client: nn.Module,
+        vfl_server: nn.Module,
+        normalize_inputs: bool = False,
+    ) -> None:
         super().__init__()
         self.image_client = image_client
         self.vfl_server = vfl_server
+        self.normalize_inputs = normalize_inputs
+        self.register_buffer(
+            "mean",
+            torch.tensor(IMAGENET_MEAN, dtype=torch.float32).view(1, 3, 1, 1),
+        )
+        self.register_buffer(
+            "std",
+            torch.tensor(IMAGENET_STD, dtype=torch.float32).view(1, 3, 1, 1),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.normalize_inputs:
+            x = (x - self.mean) / self.std
         embedding = self.image_client(x)
         return self.vfl_server(embedding)
