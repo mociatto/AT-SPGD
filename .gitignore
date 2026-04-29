@@ -1,0 +1,48 @@
+*
+
+# Curated project surface.
+!.gitignore
+!src/
+!src/**
+!scripts/
+!scripts/**
+
+# Python caches and build artifacts.
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Virtual environments and local configuration.
+.env
+.env.*
+.venv/
+venv/
+env/
+.python-version
+
+# System and editor files.
+.DS_Store
+._*
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Generated experiment artifacts.
+data/
+results/
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.csv
