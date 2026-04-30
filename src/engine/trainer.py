@@ -171,78 +171,73 @@ def cleanup_fold() -> None:
         torch.cuda.empty_cache()
 
 
-def run_cross_validation(
+def run_standard_training(
     dataset_name: str,
     model_name: str,
     data_root: Path,
     checkpoint_dir: Path,
     batch_size: int = 128,
     epochs: int = 10,
-    k_folds: int = 5,
     lr: float = 1e-3,
     emb_dim: int = EMB_DIM,
     num_workers: int = 4,
     seed: int = 42,
     device: Optional[torch.device] = None,
 ) -> Dict[str, Any]:
+    
     set_seed(seed)
     run_device = device or default_device()
-    fold_metrics: List[Dict[str, float]] = []
     best_score = -math.inf
     best_checkpoint = checkpoint_dir / f"01_baseline_{dataset_name}_{model_name}.pth"
-    num_classes = 0
+    
+    # Load the OFFICIAL Train/Test splits (No folds!)
+    from src.data.datasets import get_dataloaders
+    train_loader, val_loader, num_classes = get_dataloaders(
+        dataset_name=dataset_name,
+        batch_size=batch_size,
+        data_root=data_root,
+        num_workers=num_workers,
+        seed=seed,
+    )
+    
+    image_client = ImageClient(model_name=model_name, dim=emb_dim)
+    vfl_server = VFLServer(emb_dim=emb_dim, num_classes=num_classes)
 
-    for fold_index in range(k_folds):
-        train_loader, val_loader, num_classes = get_fold_dataloaders(
-            dataset_name=dataset_name,
-            fold_index=fold_index,
-            k_folds=k_folds,
-            batch_size=batch_size,
-            data_root=data_root,
-            num_workers=num_workers,
-            seed=seed,
-        )
-        image_client = ImageClient(model_name=model_name, dim=emb_dim)
-        vfl_server = VFLServer(emb_dim=emb_dim, num_classes=num_classes)
+    image_client, vfl_server, _ = train_vfl_system(
+        image_client=image_client,
+        vfl_server=vfl_server,
+        train_loader=train_loader,
+        epochs=epochs,
+        lr=lr,
+        device=run_device,
+    )
+    
+    metrics = evaluate_vfl_system(
+        image_client=image_client,
+        vfl_server=vfl_server,
+        data_loader=val_loader,
+        num_classes=num_classes,
+        device=run_device,
+    )
 
-        image_client, vfl_server, _ = train_vfl_system(
-            image_client=image_client,
-            vfl_server=vfl_server,
-            train_loader=train_loader,
-            epochs=epochs,
-            lr=lr,
-            device=run_device,
-        )
-        metrics = evaluate_vfl_system(
-            image_client=image_client,
-            vfl_server=vfl_server,
-            data_loader=val_loader,
-            num_classes=num_classes,
-            device=run_device,
-        )
-        fold_metrics.append(metrics)
+    save_checkpoint(
+        checkpoint_path=best_checkpoint,
+        image_client=image_client,
+        vfl_server=vfl_server,
+        dataset_name=dataset_name,
+        model_name=model_name,
+        fold_index=0,
+        num_classes=num_classes,
+        metrics=metrics,
+    )
 
-        fold_score = metrics.get("macro_f1", float("nan"))
-        if not math.isnan(fold_score) and fold_score > best_score:
-            best_score = fold_score
-            save_checkpoint(
-                checkpoint_path=best_checkpoint,
-                image_client=image_client,
-                vfl_server=vfl_server,
-                dataset_name=dataset_name,
-                model_name=model_name,
-                fold_index=fold_index,
-                num_classes=num_classes,
-                metrics=metrics,
-            )
-
-        del image_client, vfl_server, train_loader, val_loader
-        cleanup_fold()
+    del image_client, vfl_server, train_loader, val_loader
+    cleanup_fold()
 
     return {
         "dataset": dataset_name,
         "model": model_name,
         "num_classes": num_classes,
         "best_checkpoint": str(best_checkpoint),
-        **aggregate_fold_metrics(fold_metrics),
+        **metrics, # Directly unpacking the single-run metrics
     }
