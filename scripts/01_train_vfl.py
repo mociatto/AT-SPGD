@@ -38,21 +38,21 @@ from typing import Any, Dict, List
 
 import pandas as pd
 import torch
+from IPython.display import display
 
-from src.engine.trainer import default_device, run_cross_validation, set_seed
+from src.engine.trainer import default_device, run_standard_training, set_seed
 
 # %%
 DATASETS = ["cifar10", "cifar100", "svhn", "gtsrb"]
 MODELS = ["swin_tiny_patch4_window7_224", "resnet18", "mobilenet_v2", "vit_base_patch16_224"]
 
 EPOCHS = 10
-K_FOLDS = 5
 BATCH_SIZE = 128
 LR = 1e-3
 NUM_WORKERS = 4
 SEED = 42
 
-WORK_DIR = Path.cwd()
+WORK_DIR = PROJECT_ROOT
 DATA_ROOT = WORK_DIR / "data"
 RESULTS_DIR = WORK_DIR / "results" / "csv"
 CHECKPOINT_DIR = WORK_DIR / "checkpoints"
@@ -62,18 +62,19 @@ BASELINE_CSV = RESULTS_DIR / "01_baseline_metrics.csv"
 def run_experiments() -> pd.DataFrame:
     set_seed(SEED)
     device = default_device()
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     rows: List[Dict[str, Any]] = []
 
     for dataset_name in DATASETS:
         for model_name in MODELS:
-            row = run_cross_validation(
+            row = run_standard_training(
                 dataset_name=dataset_name,
                 model_name=model_name,
                 data_root=DATA_ROOT,
                 checkpoint_dir=CHECKPOINT_DIR,
                 batch_size=BATCH_SIZE,
                 epochs=EPOCHS,
-                k_folds=K_FOLDS,
                 lr=LR,
                 num_workers=NUM_WORKERS,
                 seed=SEED,
@@ -90,7 +91,5 @@ def run_experiments() -> pd.DataFrame:
 results_df = run_experiments()
 
 # %%
-RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
 results_df.to_csv(BASELINE_CSV, index=False)
 display(results_df)

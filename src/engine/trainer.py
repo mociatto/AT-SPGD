@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import gc
-import math
 import random
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -11,7 +10,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from src.data.datasets import get_fold_dataloaders
+from src.data.datasets import get_dataloaders
 from src.models.split_models import EMB_DIM, ImageClient, VFLServer
 from src.utils.metrics import evaluate_system
 
@@ -121,25 +120,6 @@ def evaluate_vfl_system(
     return evaluate_system(image_client, vfl_server, data_loader, num_classes, device)
 
 
-def aggregate_fold_metrics(fold_metrics: List[Dict[str, float]]) -> Dict[str, float]:
-    metric_names = sorted(fold_metrics[0].keys())
-    aggregated: Dict[str, float] = {}
-
-    for metric_name in metric_names:
-        values = np.asarray([metrics[metric_name] for metrics in fold_metrics], dtype=np.float64)
-        valid_values = values[~np.isnan(values)]
-        if valid_values.size == 0:
-            aggregated[f"{metric_name}_mean"] = float("nan")
-            aggregated[f"{metric_name}_std"] = float("nan")
-        else:
-            aggregated[f"{metric_name}_mean"] = float(np.mean(valid_values))
-            aggregated[f"{metric_name}_std"] = (
-                float(np.std(valid_values, ddof=1)) if valid_values.size > 1 else 0.0
-            )
-
-    return aggregated
-
-
 def save_checkpoint(
     checkpoint_path: Path,
     image_client: nn.Module,
@@ -184,14 +164,10 @@ def run_standard_training(
     seed: int = 42,
     device: Optional[torch.device] = None,
 ) -> Dict[str, Any]:
-    
     set_seed(seed)
     run_device = device or default_device()
-    best_score = -math.inf
     best_checkpoint = checkpoint_dir / f"01_baseline_{dataset_name}_{model_name}.pth"
-    
-    # Load the OFFICIAL Train/Test splits (No folds!)
-    from src.data.datasets import get_dataloaders
+
     train_loader, val_loader, num_classes = get_dataloaders(
         dataset_name=dataset_name,
         batch_size=batch_size,
@@ -199,7 +175,7 @@ def run_standard_training(
         num_workers=num_workers,
         seed=seed,
     )
-    
+
     image_client = ImageClient(model_name=model_name, dim=emb_dim)
     vfl_server = VFLServer(emb_dim=emb_dim, num_classes=num_classes)
 
@@ -211,7 +187,7 @@ def run_standard_training(
         lr=lr,
         device=run_device,
     )
-    
+
     metrics = evaluate_vfl_system(
         image_client=image_client,
         vfl_server=vfl_server,
@@ -239,5 +215,5 @@ def run_standard_training(
         "model": model_name,
         "num_classes": num_classes,
         "best_checkpoint": str(best_checkpoint),
-        **metrics, # Directly unpacking the single-run metrics
+        **metrics,
     }
