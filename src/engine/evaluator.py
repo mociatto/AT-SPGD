@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import gc
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 import lpips
 import torch
@@ -10,6 +10,7 @@ import torchattacks
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
 
 from src.attacks.at_spgd import ATSPGD
+from src.attacks.ssa import SSA
 from src.data.datasets import IMAGENET_MEAN, IMAGENET_STD
 from src.models.split_models import FullVFLModel
 
@@ -63,7 +64,7 @@ def _build_attack_suite(
         "PGD": torchattacks.PGD(model, eps=eps, alpha=alpha, steps=steps),
         "APGD": torchattacks.APGD(model, eps=eps, steps=steps),
         "MIFGSM": torchattacks.MIFGSM(model, eps=eps, steps=steps),
-        "SSA": torchattacks.SSA(model, eps=eps, alpha=alpha, steps=steps),
+        "SSA": SSA(model, eps=eps, alpha=alpha, steps=steps),
         "ATSPGD": ATSPGD(model, eps=eps, alpha_f=alpha, alpha_x=alpha, steps=steps, K=K),
     }
 

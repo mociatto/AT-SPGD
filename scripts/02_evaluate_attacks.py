@@ -1,3 +1,10 @@
+# %%
+!git clone https://github.com/mociatto/AT-SPGD.git
+
+# %%
+%cd AT-SPGD
+
+# %%
 from __future__ import annotations
 
 # %%
@@ -5,25 +12,6 @@ from pathlib import Path
 import sys
 
 
-def kaggle_setup() -> None:
-    try:
-        from IPython import get_ipython
-    except ImportError:
-        return
-
-    shell = get_ipython()
-    if shell is None:
-        return
-
-    if Path.cwd().name != "AT-SPGD" and not (Path.cwd() / "src").is_dir():
-        shell.system("git clone https://github.com/mociatto/AT-SPGD.git")
-        shell.run_line_magic("cd", "AT-SPGD")
-    shell.system("pip install torchattacks lpips torchmetrics")
-
-
-kaggle_setup()
-
-# %%
 PROJECT_ROOT = Path.cwd()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
@@ -47,7 +35,7 @@ NUM_WORKERS = 4
 
 WORK_DIR = Path.cwd()
 DATA_ROOT = WORK_DIR / "data"
-CHECKPOINT_DIR = WORK_DIR / "checkpoints"
+CHECKPOINT_DIR = Path("/kaggle/input/notebooks/mostafaanoosha/spectralvfl/AT-SPGD/checkpoints")
 RESULTS_DIR = WORK_DIR / "results" / "csv"
 OUTPUT_CSV = RESULTS_DIR / "02_baseline_arena_metrics.csv"
 
