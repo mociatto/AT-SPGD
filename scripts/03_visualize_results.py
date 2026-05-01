@@ -22,6 +22,8 @@ if str(PROJECT_ROOT) not in sys.path:
 # %%
 import matplotlib.pyplot as plt
 import torch
+from IPython.display import Image as IPythonImage
+from IPython.display import display
 
 from src.models.split_models import EMB_DIM, FullVFLModel, ImageClient, VFLServer
 from src.visualization.plots import (
@@ -84,9 +86,21 @@ except TypeError:
     vis_dict_energy = torch.load(ENERGY_ARTIFACT_PATH, map_location="cpu")
 
 fig_energy = plot_radial_energy(vis_dict_energy)
-plt.show()
+radial_preview_path = FIGURE_DIR / "03_radial_energy_preview.png"
+fig_energy.savefig(
+    radial_preview_path,
+    bbox_inches="tight",
+    dpi=RADIAL_ENERGY_CONFIG.get("figure_dpi", 100),
+)
+display(
+    IPythonImage(
+        filename=str(radial_preview_path),
+        width=RADIAL_ENERGY_CONFIG.get("display_width_px", 520),
+    )
+)
 fig_energy.savefig(
     FIGURE_DIR / "03_radial_energy.pdf",
     bbox_inches="tight",
-    dpi=RADIAL_ENERGY_CONFIG["save_dpi"],
+    dpi=RADIAL_ENERGY_CONFIG.get("save_dpi", 300),
 )
+plt.close(fig_energy)
