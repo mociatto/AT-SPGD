@@ -37,6 +37,6 @@ except TypeError:
 FIGURE_DIR = Path.cwd() / "results" / "figures"
 FIGURE_DIR.mkdir(parents=True, exist_ok=True)
 
-fig = plot_magnified_noise_grid(vis_dict, num_samples=5)
+fig = plot_magnified_noise_grid(vis_dict)
 plt.show()
 fig.savefig(FIGURE_DIR / "03_magnified_noise.pdf", bbox_inches="tight")
