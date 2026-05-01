@@ -14,6 +14,8 @@ MAGNIFIED_NOISE_CONFIG = {
     "noise_magnification": 10.0,
     "num_samples": 5,
     "figsize_per_sample": (12, 2),
+    "image_border_width": 1.0,
+    "image_border_color": "black",
 }
 
 ATTACK_ORDER = ["PGD", "APGD", "MIFGSM", "SSA", "Adaptive"]
@@ -63,13 +65,18 @@ def plot_magnified_noise_grid(vis_dict: dict, num_samples: int | None = None) ->
             adv_img = vis_dict[_attack_key(attack_name)][sample_idx]
             noise_vis = torch.clamp(clean_img + (adv_img - clean_img) * magnification, 0.0, 1.0)
             row_images.append(noise_vis)
-            column_titles.append(f"{attack_name} (x{magnification:g} Noise)")
+            column_titles.append(attack_name)
 
         for column_idx, image in enumerate(row_images):
             ax = axes[sample_idx, column_idx]
             ax.imshow(_to_image_array(image))
             ax.set_xticks([])
             ax.set_yticks([])
+            border_width = float(MAGNIFIED_NOISE_CONFIG["image_border_width"])
+            for spine in ax.spines.values():
+                spine.set_visible(border_width > 0)
+                spine.set_linewidth(border_width)
+                spine.set_edgecolor(MAGNIFIED_NOISE_CONFIG["image_border_color"])
             if sample_idx == 0:
                 ax.set_title(
                     column_titles[column_idx],
