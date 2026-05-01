@@ -48,7 +48,12 @@ import matplotlib.pyplot as plt
 import torch
 
 from src.models.split_models import EMB_DIM, FullVFLModel, ImageClient, VFLServer
-from src.visualization.plots import plot_gradcam_contours, plot_magnified_noise_grid, plot_radial_energy
+from src.visualization.plots import (
+    RADIAL_ENERGY_CONFIG,
+    plot_gradcam_contours,
+    plot_magnified_noise_grid,
+    plot_radial_energy,
+)
 
 LEGACY_KAGGLE_PATH = "/kaggle/input/notebooks/mostafaanoosha/at-spgd-02-attack"
 CHECKPOINT_DIR = Path("/kaggle/input/notebooks/mostafaanoosha/at-spgd-01-training/AT-SPGD/checkpoints")
@@ -104,4 +109,8 @@ except TypeError:
 
 fig_energy = plot_radial_energy(vis_dict_energy)
 plt.show()
-fig_energy.savefig(FIGURE_DIR / "03_radial_energy.pdf", bbox_inches="tight")
+fig_energy.savefig(
+    FIGURE_DIR / "03_radial_energy.pdf",
+    bbox_inches="tight",
+    dpi=RADIAL_ENERGY_CONFIG["save_dpi"],
+)
