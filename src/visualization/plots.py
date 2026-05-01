@@ -13,7 +13,7 @@ MAGNIFIED_NOISE_CONFIG = {
     "figure_dpi": 300,
     "noise_magnification": 10.0,
     "num_samples": 5,
-    "figsize_per_sample": (10, 2),
+    "figsize_per_sample": (15, 2),
     "image_border_width": 0.0,
     "image_border_color": "black",
 }
