@@ -53,7 +53,7 @@ RADIAL_ENERGY_CONFIG = {
     "font_family": "serif",
     "axes_label_fontsize": 10,
     "tick_label_fontsize": 10,
-    "legend_fontsize": 6,
+    "legend_fontsize": 8,
     "legend_loc": "upper right",
     "figure_dpi": 100,
     "save_dpi": 300,
