@@ -74,6 +74,24 @@ RADIAL_ENERGY_CONFIG = {
     },
 }
 
+PARETO_FRONTIER_CONFIG = {
+    "font_family": "serif",
+    "axes_label_fontsize": 12,
+    "tick_label_fontsize": 10,
+    "legend_fontsize": 10,
+    "annotation_fontsize": 8,
+    "figure_dpi": 100,
+    "figsize": (4.5, 3.5),
+    "display_width_px": 1040,
+    "suboptimal_color": "lightgray",
+    "suboptimal_alpha": 0.7,
+    "suboptimal_size": 20,
+    "optimal_color": "royalblue",
+    "optimal_marker": "o",
+    "optimal_linewidth": 1.5,
+    "optimal_markersize": 6,
+}
+
 ATTACK_ORDER = ["PGD", "APGD", "MIFGSM", "SSA", "AT-SPGD (Ours)"]
 ATTACK_KEY_ALIASES = {
     "AT-SPGD (Ours)": ("adv_AT-SPGD", "adv_ATSPGD", "adv_Adaptive"),
@@ -278,6 +296,82 @@ def plot_radial_energy(vis_dict: dict) -> Figure:
     ax.legend(
         loc=RADIAL_ENERGY_CONFIG["legend_loc"],
         fontsize=RADIAL_ENERGY_CONFIG["legend_fontsize"],
+        frameon=True,
+    )
+
+    if sns is not None:
+        sns.despine(ax=ax, offset=2, trim=False)
+    else:
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_pareto_frontier(results: list[dict], dataset: str, model_name: str) -> Figure:
+    sorted_results = sorted(results, key=lambda item: item["psnr"], reverse=True)
+    frontier = []
+    max_asr_seen = -1.0
+
+    for result in sorted_results:
+        if result["asr"] > max_asr_seen:
+            frontier.append(result)
+            max_asr_seen = result["asr"]
+
+    frontier_ids = {id(result) for result in frontier}
+    suboptimal = [result for result in sorted_results if id(result) not in frontier_ids]
+
+    plt.rcParams["font.family"] = PARETO_FRONTIER_CONFIG["font_family"]
+    fig, ax = plt.subplots(
+        figsize=PARETO_FRONTIER_CONFIG["figsize"],
+        dpi=PARETO_FRONTIER_CONFIG["figure_dpi"],
+    )
+
+    if suboptimal:
+        ax.scatter(
+            [result["psnr"] for result in suboptimal],
+            [result["asr"] for result in suboptimal],
+            color=PARETO_FRONTIER_CONFIG["suboptimal_color"],
+            alpha=PARETO_FRONTIER_CONFIG["suboptimal_alpha"],
+            s=PARETO_FRONTIER_CONFIG["suboptimal_size"],
+            label="Suboptimal States",
+        )
+
+    if frontier:
+        ax.plot(
+            [result["psnr"] for result in frontier],
+            [result["asr"] for result in frontier],
+            color=PARETO_FRONTIER_CONFIG["optimal_color"],
+            marker=PARETO_FRONTIER_CONFIG["optimal_marker"],
+            linewidth=PARETO_FRONTIER_CONFIG["optimal_linewidth"],
+            markersize=PARETO_FRONTIER_CONFIG["optimal_markersize"],
+            label="Pareto Frontier",
+        )
+
+        for result in frontier:
+            ax.annotate(
+                f"K={result['k']}",
+                (result["psnr"], result["asr"]),
+                textcoords="offset points",
+                xytext=(0, 8),
+                ha="center",
+                fontsize=PARETO_FRONTIER_CONFIG["annotation_fontsize"],
+            )
+
+    ax.set_xlabel(
+        "Stealth (PSNR in dB \u2192 Higher is Better)",
+        fontsize=PARETO_FRONTIER_CONFIG["axes_label_fontsize"],
+    )
+    ax.set_ylabel(
+        "Lethality (ASR %)",
+        fontsize=PARETO_FRONTIER_CONFIG["axes_label_fontsize"],
+    )
+    ax.tick_params(axis="both", labelsize=PARETO_FRONTIER_CONFIG["tick_label_fontsize"])
+    ax.grid(True, linestyle="--", alpha=0.45)
+    ax.legend(
+        loc="lower right",
+        fontsize=PARETO_FRONTIER_CONFIG["legend_fontsize"],
         frameon=True,
     )
 

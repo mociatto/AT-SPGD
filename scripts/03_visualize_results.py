@@ -25,11 +25,13 @@ import torch
 from IPython.display import Image as IPythonImage
 from IPython.display import display
 
+from src.attacks.at_spgd import ATSPGD
 from src.models.split_models import EMB_DIM, FullVFLModel, ImageClient, VFLServer
 from src.visualization.plots import (
     RADIAL_ENERGY_CONFIG,
     plot_gradcam_contours,
     plot_magnified_noise_grid,
+    plot_pareto_frontier,
     plot_radial_energy,
 )
 
@@ -104,3 +106,62 @@ fig_energy.savefig(
     dpi=RADIAL_ENERGY_CONFIG.get("save_dpi", 300),
 )
 plt.close(fig_energy)
+
+# %%
+PARETO_DATASET = "gtsrb"
+PARETO_MODEL = "swin_tiny_patch4_window7_224"
+PARETO_SAMPLES = 64
+K_RATIOS = [0.01, 0.02, 0.03, 0.04, 0.05, 0.1]
+ALPHA_MULTIPLIERS = [0.1, 0.2, 0.5, 1.0, 1.5]
+STEPS_SWEEP = [1, 2, 5, 10]
+EPSILON = 8.0 / 255.0
+
+pareto_checkpoint = load_checkpoint(CHECKPOINT_DIR / f"01_baseline_{PARETO_DATASET}_{PARETO_MODEL}.pth")
+pareto_num_classes = int(pareto_checkpoint["num_classes"])
+
+pareto_client = ImageClient(model_name=PARETO_MODEL, dim=EMB_DIM)
+pareto_server = VFLServer(emb_dim=EMB_DIM, num_classes=pareto_num_classes)
+pareto_client.load_state_dict(pareto_checkpoint["image_client"])
+pareto_server.load_state_dict(pareto_checkpoint["vfl_server"])
+pareto_model = FullVFLModel(pareto_client, pareto_server, normalize_inputs=True).eval().to(device)
+
+PARETO_ARTIFACT_PATH = Path(LEGACY_KAGGLE_PATH) / f"vis_artifacts_{PARETO_DATASET}_{PARETO_MODEL}.pt"
+try:
+    vis_dict_pareto = torch.load(PARETO_ARTIFACT_PATH, map_location="cpu", weights_only=False)
+except TypeError:
+    vis_dict_pareto = torch.load(PARETO_ARTIFACT_PATH, map_location="cpu")
+
+images = vis_dict_pareto["clean_images"][:PARETO_SAMPLES].to(device)
+labels = vis_dict_pareto["labels"][:PARETO_SAMPLES].to(device)
+
+results = []
+for k in K_RATIOS:
+    for a_mult in ALPHA_MULTIPLIERS:
+        for s in STEPS_SWEEP:
+            atk = ATSPGD(
+                model=pareto_model,
+                eps=EPSILON,
+                alpha_f=(EPSILON / s) * a_mult,
+                steps=s,
+                K=k,
+            ).eval()
+            adv = atk(images, labels)
+
+            with torch.no_grad():
+                logits = pareto_model(adv)
+                asr = (logits.argmax(dim=1) != labels).float().mean().item() * 100.0
+                mse = torch.mean((adv - images) ** 2, dim=[1, 2, 3])
+                psnr = (20 * torch.log10(1.0 / torch.sqrt(mse))).mean().item()
+
+            results.append({"k": k, "alpha": a_mult, "steps": s, "asr": asr, "psnr": psnr})
+            del atk, adv, logits
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+fig_pareto = plot_pareto_frontier(results, PARETO_DATASET, PARETO_MODEL)
+plt.show()
+fig_pareto.savefig(
+    FIGURE_DIR / "03_pareto_frontier.pdf",
+    bbox_inches="tight",
+    dpi=300,
+)
