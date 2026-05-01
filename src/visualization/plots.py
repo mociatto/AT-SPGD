@@ -18,7 +18,7 @@ MAGNIFIED_NOISE_CONFIG = {
     "image_border_color": "black",
 }
 
-ATTACK_ORDER = ["PGD", "APGD", "MIFGSM", "SSA", "AT-SPGD"]
+ATTACK_ORDER = ["PGD", "APGD", "MIFGSM", "SSA", "AT-SPGD (Ours)"]
 ATTACK_KEY_ALIASES = {
     "AT-SPGD": ("adv_AT-SPGD", "adv_ATSPGD", "adv_Adaptive"),
 }
