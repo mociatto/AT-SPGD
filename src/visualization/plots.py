@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
 import torch
@@ -18,11 +18,18 @@ MAGNIFIED_NOISE_CONFIG = {
     "image_border_color": "black",
 }
 
-ATTACK_ORDER = ["PGD", "APGD", "MIFGSM", "SSA", "AT-SPGD"] 
+ATTACK_ORDER = ["PGD", "APGD", "MIFGSM", "SSA", "AT-SPGD"]
+ATTACK_KEY_ALIASES = {
+    "AT-SPGD": ("adv_AT-SPGD", "adv_ATSPGD", "adv_Adaptive"),
+}
 
 
 def _attack_key(attack_name: str) -> str:
     return f"adv_{attack_name}"
+
+
+def _attack_keys(attack_name: str) -> Tuple[str, ...]:
+    return ATTACK_KEY_ALIASES.get(attack_name, (_attack_key(attack_name),))
 
 
 def _to_image_array(image: torch.Tensor):
@@ -30,7 +37,14 @@ def _to_image_array(image: torch.Tensor):
 
 
 def _available_attacks(vis_dict: Dict[str, torch.Tensor]) -> List[str]:
-    return [attack_name for attack_name in ATTACK_ORDER if _attack_key(attack_name) in vis_dict]
+    return [attack_name for attack_name in ATTACK_ORDER if any(key in vis_dict for key in _attack_keys(attack_name))]
+
+
+def _resolve_attack_key(vis_dict: Dict[str, torch.Tensor], attack_name: str) -> str:
+    for key in _attack_keys(attack_name):
+        if key in vis_dict:
+            return key
+    raise KeyError(f"No image tensor found for attack {attack_name!r}.")
 
 
 def plot_magnified_noise_grid(vis_dict: dict, num_samples: int | None = None) -> Figure:
@@ -62,7 +76,7 @@ def plot_magnified_noise_grid(vis_dict: dict, num_samples: int | None = None) ->
         column_titles = ["Clean"]
 
         for attack_name in attacks:
-            adv_img = vis_dict[_attack_key(attack_name)][sample_idx]
+            adv_img = vis_dict[_resolve_attack_key(vis_dict, attack_name)][sample_idx]
             noise_vis = torch.clamp(clean_img + (adv_img - clean_img) * magnification, 0.0, 1.0)
             row_images.append(noise_vis)
             column_titles.append(attack_name)

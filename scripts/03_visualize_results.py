@@ -25,8 +25,8 @@ import torch
 
 from src.visualization.plots import plot_magnified_noise_grid
 
-LEGACY_KAGGLE_PATH = "/kaggle/input/notebooks/mostafaanoosha/spectralvfl"
-ARTIFACT_PATH = Path(LEGACY_KAGGLE_PATH) / "vis_artifacts_cifar10_resnet18.pt"
+LEGACY_KAGGLE_PATH = "/kaggle/input/notebooks/mostafaanoosha/at-spgd-02-attack"
+ARTIFACT_PATH = Path(LEGACY_KAGGLE_PATH) / "vis_artifacts_gtsrb_mobilenet_v2.pt"
 
 try:
     vis_dict = torch.load(ARTIFACT_PATH, map_location="cpu", weights_only=False)
