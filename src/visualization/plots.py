@@ -20,7 +20,7 @@ MAGNIFIED_NOISE_CONFIG = {
 
 ATTACK_ORDER = ["PGD", "APGD", "MIFGSM", "SSA", "AT-SPGD (Ours)"]
 ATTACK_KEY_ALIASES = {
-    "AT-SPGD": ("adv_AT-SPGD", "adv_ATSPGD", "adv_Adaptive"),
+    "AT-SPGD (Ours)": ("adv_AT-SPGD", "adv_ATSPGD", "adv_Adaptive"),
 }
 
 
