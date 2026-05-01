@@ -51,15 +51,15 @@ GRADCAM_CONTOUR_CONFIG = {
 
 RADIAL_ENERGY_CONFIG = {
     "font_family": "serif",
-    "axes_label_fontsize": 12,
+    "axes_label_fontsize": 10,
     "tick_label_fontsize": 10,
     "legend_fontsize": 10,
     "legend_loc": "upper right",
     "figure_dpi": 300,
-    "figsize": (4.5, 3.5),
-    "line_width": 1.5,
+    "figsize": (2.5, 1.5),
+    "line_width": 1.0,
     "smooth_window": 3,
-    "fill_alpha": 0.15,
+    "fill_alpha": 0.75,
     "y_scale": "log",
     "attack_styles": {
         "PGD": {"color": "#3d348b", "linestyle": "-"},
