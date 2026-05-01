@@ -5,6 +5,9 @@
 %cd AT-SPGD
 
 # %%
+!pip install lpips torchmetrics torchattacks
+
+# %%
 from __future__ import annotations
 
 # %%
@@ -18,10 +21,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # %%
 from typing import Any, Dict, List, Tuple
+import time
 
 import pandas as pd
 import torch
 from IPython.display import display
+from tqdm.auto import tqdm
 
 from src.data.datasets import get_dataloaders
 from src.engine.evaluator import run_attack_arena
@@ -70,12 +75,29 @@ def collect_samples(dataset_name: str) -> Tuple[torch.Tensor, torch.Tensor, int]
 # %%
 def run_evaluation() -> pd.DataFrame:
     rows: List[Dict[str, Any]] = []
+    total_runs = len(DATASETS) * len(MODELS)
+    run_counter = 0
+    start_time = time.time()
 
-    for dataset_name in DATASETS:
+    dataset_bar = tqdm(DATASETS, desc="Datasets", position=0)
+    for dataset_name in dataset_bar:
+        dataset_bar.set_postfix(dataset=dataset_name)
         test_batch, labels, dataset_num_classes = collect_samples(dataset_name)
 
-        for model_name in MODELS:
+        model_bar = tqdm(MODELS, desc=f"Models ({dataset_name})", position=1, leave=False)
+        for model_name in model_bar:
+            run_counter += 1
             checkpoint_path = CHECKPOINT_DIR / f"01_baseline_{dataset_name}_{model_name}.pth"
+            elapsed_min = (time.time() - start_time) / 60.0
+            model_bar.set_postfix(
+                model=model_name,
+                run=f"{run_counter}/{total_runs}",
+                elapsed_min=f"{elapsed_min:.1f}",
+            )
+            tqdm.write(
+                f"[Attack Arena] Dataset={dataset_name} | Model={model_name} | "
+                f"Run={run_counter}/{total_runs} | Checkpoint={checkpoint_path.name}"
+            )
             checkpoint = load_checkpoint(checkpoint_path)
             num_classes = int(checkpoint.get("num_classes", dataset_num_classes))
 
@@ -100,11 +122,13 @@ def run_evaluation() -> pd.DataFrame:
             del client, server
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+        model_bar.close()
 
         del test_batch, labels
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
+    dataset_bar.close()
     return pd.DataFrame(rows)
 
 
