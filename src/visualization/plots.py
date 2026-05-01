@@ -53,7 +53,7 @@ RADIAL_ENERGY_CONFIG = {
     "font_family": "serif",
     "axes_label_fontsize": 10,
     "tick_label_fontsize": 10,
-    "legend_fontsize": 10,
+    "legend_fontsize": 6,
     "legend_loc": "upper right",
     "figure_dpi": 100,
     "save_dpi": 300,
@@ -63,7 +63,7 @@ RADIAL_ENERGY_CONFIG = {
     "smooth_window": 3,
     "fill_alpha": 0.0,
     "y_scale": "linear",
-    "x_label": "Spatial Frequency (Low \u2192 High)",
+    "x_label": "Spatial Frequency",
     "y_label": "Mean Adversarial Energy",
     "attack_styles": {
         "PGD": {"color": "#3d348b", "linestyle": "-"},
