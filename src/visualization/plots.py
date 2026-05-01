@@ -56,7 +56,7 @@ RADIAL_ENERGY_CONFIG = {
     "legend_fontsize": 10,
     "legend_loc": "upper right",
     "figure_dpi": 300,
-    "figsize": (2.5, 1.5),
+    "figsize": (4.5, 1.5),
     "line_width": 1.0,
     "smooth_window": 3,
     "fill_alpha": 0.75,
