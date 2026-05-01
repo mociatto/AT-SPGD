@@ -61,7 +61,7 @@ RADIAL_ENERGY_CONFIG = {
     "figsize": (4.5, 3.5),
     "line_width": 1.0,
     "smooth_window": 3,
-    "fill_alpha": 0.5,
+    "fill_alpha": 0.0,
     "y_scale": "linear",
     "x_label": "Spatial Frequency (Low \u2192 High)",
     "y_label": "Mean Adversarial Energy",
