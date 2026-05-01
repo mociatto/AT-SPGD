@@ -1,11 +1,35 @@
 # %%
-!git clone https://github.com/mociatto/AT-SPGD.git
+import os
+import sys
+from pathlib import Path
+
+# 1. Always reset our anchor to Kaggle's base working directory
+os.chdir("/kaggle/working")
+repo_dir = Path("/kaggle/working/AT-SPGD")
+
+# 2. Smart Sync Logic
+if repo_dir.exists():
+    print("Repository found. Forcing sync with latest GitHub commit...")
+    os.chdir(repo_dir)
+    # Fetch latest changes, force overwrite local files, and clean untracked junk
+    !git fetch --all --quiet
+    !git reset --hard origin/main --quiet
+    !git clean -fd --quiet
+    print("Sync complete!")
+else:
+    print("Cloning repository for the first time...")
+    !git clone https://github.com/mociatto/AT-SPGD.git
+    os.chdir(repo_dir)
+
+# 3. Ensure the updated path is in sys.path
+if str(repo_dir) not in sys.path:
+    sys.path.append(str(repo_dir))
+
+# 4. Install dependencies quietly so it doesn't flood your notebook
+!pip install -q matplotlib torchattacks lpips torchmetrics
 
 # %%
 %cd AT-SPGD
-
-# %%
-!pip install matplotlib
 
 # %%
 from __future__ import annotations
@@ -24,7 +48,7 @@ import matplotlib.pyplot as plt
 import torch
 
 from src.models.split_models import EMB_DIM, FullVFLModel, ImageClient, VFLServer
-from src.visualization.plots import plot_gradcam_contours, plot_magnified_noise_grid
+from src.visualization.plots import plot_gradcam_contours, plot_magnified_noise_grid, plot_radial_energy
 
 LEGACY_KAGGLE_PATH = "/kaggle/input/notebooks/mostafaanoosha/at-spgd-02-attack"
 CHECKPOINT_DIR = Path("/kaggle/input/notebooks/mostafaanoosha/spectralvfl/AT-SPGD/checkpoints")
@@ -67,3 +91,17 @@ full_model = FullVFLModel(client, server, normalize_inputs=True).eval().to(devic
 fig_cam = plot_gradcam_contours(full_model, VIS_MODEL, vis_dict, num_samples=5)
 plt.show()
 fig_cam.savefig(FIGURE_DIR / "03_gradcam_contours.pdf", bbox_inches="tight")
+
+# %%
+ENERGY_DATASET = "gtsrb"
+ENERGY_MODEL = "swin_tiny_patch4_window7_224"
+ENERGY_ARTIFACT_PATH = Path(LEGACY_KAGGLE_PATH) / f"vis_artifacts_{ENERGY_DATASET}_{ENERGY_MODEL}.pt"
+
+try:
+    vis_dict_energy = torch.load(ENERGY_ARTIFACT_PATH, map_location="cpu", weights_only=False)
+except TypeError:
+    vis_dict_energy = torch.load(ENERGY_ARTIFACT_PATH, map_location="cpu")
+
+fig_energy = plot_radial_energy(vis_dict_energy)
+plt.show()
+fig_energy.savefig(FIGURE_DIR / "03_radial_energy.pdf", bbox_inches="tight")

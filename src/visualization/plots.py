@@ -10,6 +10,11 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.figure import Figure
 from scipy.ndimage import gaussian_filter
 
+try:
+    import seaborn as sns
+except ImportError:
+    sns = None
+
 MAGNIFIED_NOISE_CONFIG = {
     "font_family": "serif",
     "title_fontsize": 10,
@@ -27,6 +32,7 @@ GRADCAM_CONTOUR_CONFIG = {
     "title_fontsize": 10,
     "label_fontsize": 10,
     "figure_dpi": 300,
+    "num_samples": 5,
     "contour_levels": 8,
     "contour_min_level": 0.15,
     "contour_max_level": 0.95,
@@ -41,6 +47,26 @@ GRADCAM_CONTOUR_CONFIG = {
     "figsize_scale": 2.15,
     "target_class": "predicted",
     "use_fallback_input_gradient": True,
+}
+
+RADIAL_ENERGY_CONFIG = {
+    "font_family": "serif",
+    "axes_label_fontsize": 10,
+    "tick_label_fontsize": 10,
+    "legend_fontsize": 10,
+    "legend_loc": "best",
+    "figure_dpi": 300,
+    "figsize": (10, 6),
+    "line_width": 1,
+    "smooth_window": 5,
+    "fill_alpha": 0.15,
+    "attack_styles": {
+        "PGD": {"color": "#3d348b", "linestyle": "--"},
+        "APGD": {"color": "#7678ed", "linestyle": "--"},
+        "MIFGSM": {"color": "#a8dadc", "linestyle": "--"},
+        "SSA": {"color": "#f7b801", "linestyle": "-"},
+        "Adaptive": {"color": "#f18701", "linestyle": "-"},
+    },
 }
 
 ATTACK_ORDER = ["PGD", "APGD", "MIFGSM", "SSA", "AT-SPGD (Ours)"]
@@ -126,6 +152,134 @@ def plot_magnified_noise_grid(vis_dict: dict, num_samples: int | None = None) ->
             f"Sample {sample_idx}",
             fontsize=MAGNIFIED_NOISE_CONFIG["label_fontsize"],
         )
+
+    plt.tight_layout()
+    return fig
+
+
+def get_radial_profile(clean_img: torch.Tensor, adv_img: torch.Tensor) -> np.ndarray:
+    """
+    Radial average of 2D FFT magnitude of adversarial noise (adv - clean).
+
+    1. noise = adv_img - clean_img
+    2. Per-channel 2D FFT, fftshift, magnitude; average over RGB and batch
+    3. Radial average vs distance from spectrum center (low → high frequency index)
+    """
+    noise = adv_img - clean_img
+    if noise.dim() == 3:
+        noise = noise.unsqueeze(0)
+    b, c, h, w = noise.shape
+    device = noise.device
+    dtype = torch.float64
+
+    mag_sum = torch.zeros(h, w, device=device, dtype=dtype)
+    noise_64 = noise.to(dtype=dtype)
+    for bi in range(b):
+        for ci in range(c):
+            x = noise_64[bi, ci]
+            spec = torch.fft.fftshift(torch.fft.fft2(x))
+            mag_sum += torch.abs(spec)
+
+    mag_avg = (mag_sum / float(b * c)).detach().cpu().numpy()
+    cy, cx = h // 2, w // 2
+    yy, xx = np.indices((h, w), dtype=np.float64)
+    r = np.sqrt((yy - cy) ** 2 + (xx - cx) ** 2)
+    r_max = int(np.ceil(float(r.max())))
+    r_int = np.minimum(np.round(r).astype(np.int64).ravel(), r_max)
+    weights = mag_avg.ravel()
+    radial_sum = np.bincount(r_int, weights=weights, minlength=r_max + 1).astype(np.float64)
+    counts = np.bincount(r_int, minlength=r_max + 1).astype(np.float64)
+    radial = np.divide(
+        radial_sum,
+        np.maximum(counts, 1.0),
+        out=np.zeros_like(radial_sum),
+        where=counts > 0,
+    )
+    return radial
+
+
+def _smooth_curve(y: np.ndarray, window_size: int) -> np.ndarray:
+    if window_size <= 1:
+        return y
+    return np.convolve(y, np.ones(window_size) / window_size, mode="same")
+
+
+def _radial_style_key(attack_name: str) -> str:
+    if attack_name in {"AT-SPGD", "AT-SPGD (Ours)"}:
+        return "Adaptive"
+    return attack_name
+
+
+def _radial_label(attack_name: str) -> str:
+    if _radial_style_key(attack_name) == "Adaptive":
+        return "Ours (Adaptive Top-K)"
+    return attack_name
+
+
+def plot_radial_energy(vis_dict: dict) -> Figure:
+    plt.rcParams["font.family"] = RADIAL_ENERGY_CONFIG["font_family"]
+    fig, ax = plt.subplots(
+        figsize=RADIAL_ENERGY_CONFIG["figsize"],
+        dpi=RADIAL_ENERGY_CONFIG["figure_dpi"],
+    )
+
+    clean_images = vis_dict["clean_images"]
+    attacks = _available_attacks(vis_dict)
+    profiles = {
+        attack_name: get_radial_profile(
+            clean_images,
+            vis_dict[_resolve_attack_key(vis_dict, attack_name)],
+        )
+        for attack_name in attacks
+    }
+    if not profiles:
+        raise KeyError("No adversarial image tensors found for radial energy plotting.")
+
+    min_len = min(len(profile) for profile in profiles.values())
+    freq_axis = np.arange(min_len, dtype=float)
+    attack_styles = RADIAL_ENERGY_CONFIG["attack_styles"]
+    smooth_window = int(RADIAL_ENERGY_CONFIG["smooth_window"])
+
+    for attack_name, profile in profiles.items():
+        style_key = _radial_style_key(attack_name)
+        style = attack_styles.get(style_key, {"color": "black", "linestyle": "-"})
+        smoothed_profile = _smooth_curve(profile[:min_len], smooth_window)
+        ax.plot(
+            freq_axis,
+            smoothed_profile,
+            color=style["color"],
+            linestyle=style["linestyle"],
+            linewidth=RADIAL_ENERGY_CONFIG["line_width"],
+            label=_radial_label(attack_name),
+        )
+        ax.fill_between(
+            freq_axis,
+            0,
+            smoothed_profile,
+            color=style["color"],
+            alpha=RADIAL_ENERGY_CONFIG["fill_alpha"],
+        )
+
+    ax.set_xlabel(
+        "Spatial Frequency (Low → High)",
+        fontsize=RADIAL_ENERGY_CONFIG["axes_label_fontsize"],
+    )
+    ax.set_ylabel(
+        "Mean Adversarial Energy",
+        fontsize=RADIAL_ENERGY_CONFIG["axes_label_fontsize"],
+    )
+    ax.tick_params(axis="both", labelsize=RADIAL_ENERGY_CONFIG["tick_label_fontsize"])
+    ax.legend(
+        loc=RADIAL_ENERGY_CONFIG["legend_loc"],
+        fontsize=RADIAL_ENERGY_CONFIG["legend_fontsize"],
+        frameon=True,
+    )
+
+    if sns is not None:
+        sns.despine(ax=ax, offset=2, trim=False)
+    else:
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
 
     plt.tight_layout()
     return fig
@@ -270,13 +424,14 @@ def plot_gradcam_contours(
     full_model: nn.Module,
     model_name: str,
     vis_dict: dict,
-    num_samples: int = 5,
+    num_samples: int | None = None,
 ) -> Figure:
     clean_images = vis_dict["clean_images"]
     labels = vis_dict["labels"]
     attacks = _available_attacks(vis_dict)
     attack_keys = [_resolve_attack_key(vis_dict, attack_name) for attack_name in attacks]
-    sample_count = min(num_samples, clean_images.shape[0], labels.shape[0], *[vis_dict[key].shape[0] for key in attack_keys])
+    requested_samples = num_samples or int(GRADCAM_CONTOUR_CONFIG["num_samples"])
+    sample_count = min(requested_samples, clean_images.shape[0], labels.shape[0], *[vis_dict[key].shape[0] for key in attack_keys])
     column_count = 1 + len(attacks)
     scale = float(GRADCAM_CONTOUR_CONFIG["figsize_scale"])
     device = next(full_model.parameters()).device
