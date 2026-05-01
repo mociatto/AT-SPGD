@@ -1,35 +1,11 @@
 # %%
-import os
-import sys
-from pathlib import Path
-
-# 1. Always reset our anchor to Kaggle's base working directory
-os.chdir("/kaggle/working")
-repo_dir = Path("/kaggle/working/AT-SPGD")
-
-# 2. Smart Sync Logic
-if repo_dir.exists():
-    print("Repository found. Forcing sync with latest GitHub commit...")
-    os.chdir(repo_dir)
-    # Fetch latest changes, force overwrite local files, and clean untracked junk
-    !git fetch --all --quiet
-    !git reset --hard origin/main --quiet
-    !git clean -fd --quiet
-    print("Sync complete!")
-else:
-    print("Cloning repository for the first time...")
-    !git clone https://github.com/mociatto/AT-SPGD.git
-    os.chdir(repo_dir)
-
-# 3. Ensure the updated path is in sys.path
-if str(repo_dir) not in sys.path:
-    sys.path.append(str(repo_dir))
-
-# 4. Install dependencies quietly so it doesn't flood your notebook
-!pip install -q matplotlib torchattacks lpips torchmetrics
+!git clone https://github.com/mociatto/AT-SPGD.git
 
 # %%
 %cd AT-SPGD
+
+# %%
+!pip install -q matplotlib torchattacks lpips torchmetrics
 
 # %%
 from __future__ import annotations
