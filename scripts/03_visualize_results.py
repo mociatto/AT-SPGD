@@ -51,8 +51,8 @@ from src.models.split_models import EMB_DIM, FullVFLModel, ImageClient, VFLServe
 from src.visualization.plots import plot_gradcam_contours, plot_magnified_noise_grid, plot_radial_energy
 
 LEGACY_KAGGLE_PATH = "/kaggle/input/notebooks/mostafaanoosha/at-spgd-02-attack"
-CHECKPOINT_DIR = Path("/kaggle/input/notebooks/mostafaanoosha/spectralvfl/AT-SPGD/checkpoints")
-VIS_DATASET = "cifar10"
+CHECKPOINT_DIR = Path("/kaggle/input/notebooks/mostafaanoosha/at-spgd-01-training/AT-SPGD/checkpoints")
+VIS_DATASET = "gtsrb"
 VIS_MODEL = "resnet18"
 ARTIFACT_PATH = Path(LEGACY_KAGGLE_PATH) / f"vis_artifacts_{VIS_DATASET}_{VIS_MODEL}.pt"
 
