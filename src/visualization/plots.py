@@ -13,12 +13,12 @@ MAGNIFIED_NOISE_CONFIG = {
     "figure_dpi": 300,
     "noise_magnification": 10.0,
     "num_samples": 5,
-    "figsize_per_sample": (15, 2),
+    "figsize_per_sample": (10, 4),
     "image_border_width": 0.0,
     "image_border_color": "black",
 }
 
-ATTACK_ORDER = ["PGD", "APGD", "MIFGSM", "SSA", "Adaptive"]
+ATTACK_ORDER = ["PGD", "APGD", "MIFGSM", "SSA", "AT-SPGD (Ours)"]
 
 
 def _attack_key(attack_name: str) -> str:

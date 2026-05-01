@@ -1,5 +1,4 @@
 # %%
-!rm -rf AT-SPGD
 !git clone https://github.com/mociatto/AT-SPGD.git
 
 # %%
