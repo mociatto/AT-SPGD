@@ -51,15 +51,16 @@ GRADCAM_CONTOUR_CONFIG = {
 
 RADIAL_ENERGY_CONFIG = {
     "font_family": "serif",
-    "axes_label_fontsize": 10,
+    "axes_label_fontsize": 12,
     "tick_label_fontsize": 10,
     "legend_fontsize": 10,
-    "legend_loc": "best",
+    "legend_loc": "upper right",
     "figure_dpi": 300,
-    "figsize": (6, 6),
-    "line_width": 1,
-    "smooth_window": 0,
+    "figsize": (4.5, 3.5),
+    "line_width": 1.5,
+    "smooth_window": 3,
     "fill_alpha": 0.15,
+    "y_scale": "log",
     "attack_styles": {
         "PGD": {"color": "#3d348b", "linestyle": "-"},
         "APGD": {"color": "#7678ed", "linestyle": "-"},
@@ -212,7 +213,7 @@ def _radial_style_key(attack_name: str) -> str:
 
 def _radial_label(attack_name: str) -> str:
     if _radial_style_key(attack_name) == "Adaptive":
-        return "Ours (Adaptive Top-K)"
+        return "AT-SPGD (Ours)"
     return attack_name
 
 
@@ -260,6 +261,7 @@ def plot_radial_energy(vis_dict: dict) -> Figure:
             alpha=RADIAL_ENERGY_CONFIG["fill_alpha"],
         )
 
+    ax.set_yscale(RADIAL_ENERGY_CONFIG["y_scale"])
     ax.set_xlabel(
         "Spatial Frequency (Low → High)",
         fontsize=RADIAL_ENERGY_CONFIG["axes_label_fontsize"],

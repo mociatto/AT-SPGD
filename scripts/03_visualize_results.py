@@ -94,7 +94,7 @@ fig_cam.savefig(FIGURE_DIR / "03_gradcam_contours.pdf", bbox_inches="tight")
 
 # %%
 ENERGY_DATASET = "gtsrb"
-ENERGY_MODEL = "swin_tiny_patch4_window7_224"
+ENERGY_MODEL = "resnet18"
 ENERGY_ARTIFACT_PATH = Path(LEGACY_KAGGLE_PATH) / f"vis_artifacts_{ENERGY_DATASET}_{ENERGY_MODEL}.pt"
 
 try:
