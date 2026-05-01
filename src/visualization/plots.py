@@ -41,7 +41,7 @@ GRADCAM_CONTOUR_CONFIG = {
     "contour_smooth_sigma": 8,
     "contour_linewidth": 1.0,
     "contour_alpha": 1.0,
-    "back_image_alpha": 0.5,
+    "back_image_alpha": 0.2,
     "image_border_width": 0.0,
     "image_border_color": "black",
     "figsize_scale": 2.15,
@@ -57,12 +57,14 @@ RADIAL_ENERGY_CONFIG = {
     "legend_loc": "upper right",
     "figure_dpi": 100,
     "save_dpi": 300,
-    "display_width_px": 720,
+    "display_width_px": 1040,
     "figsize": (4.5, 3.5),
     "line_width": 1.0,
     "smooth_window": 3,
     "fill_alpha": 0.5,
-    "y_scale": "log",
+    "y_scale": "linear",
+    "x_label": "Spatial Frequency (Low \u2192 High)",
+    "y_label": "Mean Adversarial Energy",
     "attack_styles": {
         "PGD": {"color": "#3d348b", "linestyle": "-"},
         "APGD": {"color": "#7678ed", "linestyle": "-"},
@@ -265,11 +267,11 @@ def plot_radial_energy(vis_dict: dict) -> Figure:
 
     ax.set_yscale(RADIAL_ENERGY_CONFIG["y_scale"])
     ax.set_xlabel(
-        "Spatial Frequency (Low → High)",
+        RADIAL_ENERGY_CONFIG["x_label"],
         fontsize=RADIAL_ENERGY_CONFIG["axes_label_fontsize"],
     )
     ax.set_ylabel(
-        "Mean Adversarial Energy",
+        RADIAL_ENERGY_CONFIG["y_label"],
         fontsize=RADIAL_ENERGY_CONFIG["axes_label_fontsize"],
     )
     ax.tick_params(axis="both", labelsize=RADIAL_ENERGY_CONFIG["tick_label_fontsize"])
