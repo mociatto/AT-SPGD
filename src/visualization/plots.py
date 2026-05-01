@@ -41,7 +41,7 @@ GRADCAM_CONTOUR_CONFIG = {
     "contour_smooth_sigma": 8,
     "contour_linewidth": 1.0,
     "contour_alpha": 1.0,
-    "back_image_alpha": 0.2,
+    "back_image_alpha": 0.5,
     "image_border_width": 0.0,
     "image_border_color": "black",
     "figsize_scale": 2.15,

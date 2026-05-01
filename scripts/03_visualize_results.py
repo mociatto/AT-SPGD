@@ -78,8 +78,8 @@ plt.show()
 fig_cam.savefig(FIGURE_DIR / "03_gradcam_contours.pdf", bbox_inches="tight")
 
 # %%
-ENERGY_DATASET = "gtsrb"
-ENERGY_MODEL = "resnet18"
+ENERGY_DATASET = "svhn"
+ENERGY_MODEL = "swin_tiny_patch4_window7_224"
 ENERGY_ARTIFACT_PATH = Path(LEGACY_KAGGLE_PATH) / f"vis_artifacts_{ENERGY_DATASET}_{ENERGY_MODEL}.pt"
 
 try:
@@ -111,11 +111,12 @@ plt.close(fig_energy)
 PARETO_DATASET = "gtsrb"
 PARETO_MODEL = "swin_tiny_patch4_window7_224"
 PARETO_SAMPLES = 64
-K_RATIOS = [0.01, 0.02, 0.03, 0.04, 0.05, 0.1]
+K_RATIOS = [0.01, 0.02, 0.05, 0.1]
 ALPHA_MULTIPLIERS = [0.1, 0.2, 0.5, 1.0, 1.5]
 STEPS_SWEEP = [1, 2, 5, 10]
 EPSILON = 8.0 / 255.0
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 pareto_checkpoint = load_checkpoint(CHECKPOINT_DIR / f"01_baseline_{PARETO_DATASET}_{PARETO_MODEL}.pth")
 pareto_num_classes = int(pareto_checkpoint["num_classes"])
 
