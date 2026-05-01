@@ -24,18 +24,20 @@ MAGNIFIED_NOISE_CONFIG = {
 
 GRADCAM_CONTOUR_CONFIG = {
     "font_family": "serif",
-    "title_fontsize": 13,
+    "title_fontsize": 10,
     "label_fontsize": 10,
     "figure_dpi": 300,
     "contour_levels": 8,
     "contour_min_level": 0.15,
     "contour_max_level": 0.95,
-    "contour_color_low": "dodgerblue",
-    "contour_color_high": "crimson",
-    "contour_smooth_sigma": 1.25,
+    "contour_color_low": "#f18701",
+    "contour_color_high": "#3d348b",
+    "contour_smooth_sigma": 5,
     "contour_linewidth": 1.15,
-    "contour_alpha": 0.95,
-    "back_image_alpha": 0.82,
+    "contour_alpha": 1.0,
+    "back_image_alpha": 0.75,
+    "image_border_width": 0.0,
+    "image_border_color": "black",
     "figsize_scale": 2.15,
     "target_class": "predicted",
     "use_fallback_input_gradient": True,
@@ -328,6 +330,11 @@ def plot_gradcam_contours(
             )
             ax.set_xticks([])
             ax.set_yticks([])
+            border_width = float(GRADCAM_CONTOUR_CONFIG["image_border_width"])
+            for spine in ax.spines.values():
+                spine.set_visible(border_width > 0)
+                spine.set_linewidth(border_width)
+                spine.set_edgecolor(GRADCAM_CONTOUR_CONFIG["image_border_color"])
             if sample_idx == 0:
                 ax.set_title(title, fontsize=GRADCAM_CONTOUR_CONFIG["title_fontsize"])
             if column_idx == 0:
