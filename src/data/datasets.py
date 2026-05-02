@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import urllib.error
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -35,6 +36,30 @@ def image_transform(image_size: int = 224) -> transforms.Compose:
     )
 
 
+def _get_fallback_root(dataset_name: str) -> Path:
+    fallback_root = Path("/kaggle/working/fallback_data")
+    fallback_root.mkdir(parents=True, exist_ok=True)
+
+    if dataset_name == "cifar100":
+        target = Path("/kaggle/input/datasets/fedesoriano/cifar100")
+        link_name = fallback_root / "cifar-100-python"
+    elif dataset_name == "cifar10":
+        target = Path("/kaggle/input/datasets/pankrzysiu/cifar10-python")
+        if (target / "cifar-10-batches-py").exists():
+            target = target / "cifar-10-batches-py"
+        link_name = fallback_root / "cifar-10-batches-py"
+    else:
+        return Path("/kaggle/working/data")
+
+    if target.exists() and not link_name.exists():
+        try:
+            os.symlink(target, link_name)
+        except FileExistsError:
+            pass
+
+    return fallback_root
+
+
 def load_image_dataset(
     dataset_name: str,
     split: str,
@@ -44,14 +69,6 @@ def load_image_dataset(
     name = dataset_name.lower()
     root = Path(data_root) if data_root is not None else default_data_root()
     transform = image_transform(image_size=image_size)
-    KAGGLE_FALLBACKS = {
-        "cifar10": Path("/kaggle/input/cifar10-python"),
-        "cifar100": Path("/kaggle/input/cifar100"),
-    }
-    if Path("/kaggle/input/datasets/pankrzysiu/cifar10-python").exists():
-        KAGGLE_FALLBACKS["cifar10"] = Path("/kaggle/input/datasets/pankrzysiu/cifar10-python")
-    if Path("/kaggle/input/datasets/fedesoriano/cifar100").exists():
-        KAGGLE_FALLBACKS["cifar100"] = Path("/kaggle/input/datasets/fedesoriano/cifar100")
 
     if name == "cifar10":
         try:
@@ -62,9 +79,10 @@ def load_image_dataset(
                 transform=transform,
             )
         except Exception:
-            print(f"Official download failed for {name}. Falling back to local Kaggle dataset...")
+            print(f"Official download failed for {name}. Using symlink fallback...")
+            fallback_root = _get_fallback_root(name)
             dataset = datasets.CIFAR10(
-                root=KAGGLE_FALLBACKS[name],
+                root=fallback_root,
                 train=split == "train",
                 download=False,
                 transform=transform,
@@ -78,9 +96,10 @@ def load_image_dataset(
                 transform=transform,
             )
         except Exception:
-            print(f"Official download failed for {name}. Falling back to local Kaggle dataset...")
+            print(f"Official download failed for {name}. Using symlink fallback...")
+            fallback_root = _get_fallback_root(name)
             dataset = datasets.CIFAR100(
-                root=KAGGLE_FALLBACKS[name],
+                root=fallback_root,
                 train=split == "train",
                 download=False,
                 transform=transform,
