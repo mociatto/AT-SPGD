@@ -22,20 +22,25 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # %%
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 from IPython.display import Image as IPythonImage
 from IPython.display import display
+from PIL import Image
 
 from src.attacks.at_spgd import ATSPGD
 from src.models.split_models import EMB_DIM, FullVFLModel, ImageClient, VFLServer
 from src.visualization.plots import (
     GRADCAM_CONTOUR_CONFIG,
+    JPEG_COMPRESSION_CONFIG,
     MAGNIFIED_NOISE_CONFIG,
     PARETO_FRONTIER_CONFIG,
     RADIAL_ENERGY_CONFIG,
     plot_average_radial_energy_comparison,
     plot_average_radial_energy_panel,
     plot_gradcam_contour_row,
+    plot_jpeg_compression_comparison,
+    plot_jpeg_compression_panel,
     plot_magnified_noise_row,
     plot_pareto_frontier_comparison,
     plot_pareto_frontier_panel,
@@ -285,5 +290,92 @@ for panel_label, case in PARETO_CASES.items():
         FIGURE_DIR / f"03_pareto_frontier_{panel_key}_{model_name}.pdf",
         bbox_inches="tight",
         dpi=PARETO_FRONTIER_CONFIG.get("save_dpi", 300),
+    )
+    plt.close(fig_panel)
+
+# %%
+JPEG_DATASETS = JPEG_COMPRESSION_CONFIG["datasets"]
+JPEG_MODELS = JPEG_COMPRESSION_CONFIG["models"]
+JPEG_QUALITIES = JPEG_COMPRESSION_CONFIG["jpeg_qualities"]
+JPEG_ATTACK_KEYS = ("adv_AT-SPGD", "adv_ATSPGD", "adv_Adaptive")
+
+
+def get_ours_attack_images(artifact: dict) -> torch.Tensor:
+    for attack_key in JPEG_ATTACK_KEYS:
+        if attack_key in artifact:
+            return artifact[attack_key]
+    raise KeyError(f"No AT-SPGD adversarial tensor found. Tried: {JPEG_ATTACK_KEYS}")
+
+
+def apply_jpeg_batch(images: torch.Tensor, quality: int, device: torch.device) -> torch.Tensor:
+    compressed_images = []
+    for image in images:
+        image_np = (image.detach().cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
+        image_pil = Image.fromarray(image_np.transpose(1, 2, 0))
+        buffer = io.BytesIO()
+        image_pil.save(buffer, format="JPEG", quality=quality)
+        buffer.seek(0)
+        compressed_np = np.asarray(Image.open(buffer)).astype(np.float32) / 255.0
+        compressed_images.append(torch.from_numpy(compressed_np.transpose(2, 0, 1)))
+    return torch.stack(compressed_images).to(device)
+
+
+def compute_jpeg_asr_curve(dataset_name: str, model_name: str, device: torch.device) -> list[float]:
+    model = build_vfl_model(dataset_name, model_name, device)
+    artifact = load_visual_artifact(dataset_name, model_name)
+    adversarial_images = get_ours_attack_images(artifact)
+    sample_count = min(adversarial_images.shape[0], artifact["labels"].shape[0])
+    adversarial_images = adversarial_images[:sample_count]
+    labels = artifact["labels"][:sample_count].to(device)
+
+    asr_curve = []
+    for quality in JPEG_QUALITIES:
+        compressed = apply_jpeg_batch(adversarial_images, quality, device)
+        with torch.no_grad():
+            logits = model(compressed)
+            asr = (logits.argmax(dim=1) != labels).float().mean().item() * 100.0
+        asr_curve.append(asr)
+        del compressed, logits
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    del model, artifact, adversarial_images, labels
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return asr_curve
+
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+jpeg_curves = {
+    dataset_name: {
+        model_name: compute_jpeg_asr_curve(dataset_name, model_name, device)
+        for model_name in JPEG_MODELS
+    }
+    for dataset_name in JPEG_DATASETS
+}
+
+fig_jpeg = plot_jpeg_compression_comparison(jpeg_curves)
+jpeg_preview_buffer = io.BytesIO()
+fig_jpeg.savefig(
+    jpeg_preview_buffer,
+    format="png",
+    bbox_inches="tight",
+    dpi=JPEG_COMPRESSION_CONFIG.get("figure_dpi", 100),
+)
+jpeg_preview_buffer.seek(0)
+display(
+    IPythonImage(
+        data=jpeg_preview_buffer.getvalue(),
+        width=JPEG_COMPRESSION_CONFIG.get("display_width_px", 800),
+    )
+)
+plt.close(fig_jpeg)
+
+for dataset_name, model_curves in jpeg_curves.items():
+    fig_panel = plot_jpeg_compression_panel(dataset_name, model_curves)
+    fig_panel.savefig(
+        FIGURE_DIR / f"03_jpeg_compression_{dataset_name}.pdf",
+        bbox_inches="tight",
+        dpi=JPEG_COMPRESSION_CONFIG.get("save_dpi", 300),
     )
     plt.close(fig_panel)

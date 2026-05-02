@@ -119,6 +119,46 @@ PARETO_FRONTIER_CONFIG = {
     "annotation_arrow_alpha": 0.45,
 }
 
+JPEG_COMPRESSION_CONFIG = {
+    "font_family": "serif",
+    "axes_label_fontsize": 10,
+    "tick_label_fontsize": 10,
+    "legend_fontsize": 8,
+    "legend_loc": "lower left",
+    "figure_dpi": 100,
+    "save_dpi": 300,
+    "figsize": (4.5, 3.5),
+    "figsize_scale": 1.0,
+    "display_width_px": 800,
+    "datasets": ["cifar10", "cifar100", "svhn", "gtsrb"],
+    "dataset_labels": {
+        "cifar10": "CIFAR-10",
+        "cifar100": "CIFAR-100",
+        "svhn": "SVHN",
+        "gtsrb": "GTSRB",
+    },
+    "models": ["swin_tiny_patch4_window7_224", "resnet18", "mobilenet_v2", "vit_base_patch16_224"],
+    "model_labels": {
+        "swin_tiny_patch16_224": "Swin-Tiny",
+        "swin_tiny_patch4_window7_224": "Swin-Tiny",
+        "resnet18": "ResNet-18",
+        "mobilenet_v2": "MobileNetV2",
+        "vit_base_patch16_224": "ViT-B/16",
+    },
+    "model_colors": {
+        "swin_tiny_patch4_window7_224": "#FFBE0B",
+        "resnet18": "#FB5607",
+        "mobilenet_v2": "#8338EC",
+        "vit_base_patch16_224": "#3A86FF",
+    },
+    "jpeg_qualities": [100, 90, 80, 70, 60, 50, 40, 30],
+    "marker": "o",
+    "line_width": 1.0,
+    "markersize": 6,
+    "x_label": "JPEG Quality",
+    "y_label": "Attack Success Rate",
+}
+
 ATTACK_ORDER = ["PGD", "APGD", "MIFGSM", "SSA", "AT-SPGD (Ours)"]
 ATTACK_KEY_ALIASES = {
     "AT-SPGD (Ours)": ("adv_AT-SPGD", "adv_ATSPGD", "adv_Adaptive"),
@@ -584,6 +624,85 @@ def plot_pareto_frontier_comparison(panel_results: Dict[str, list[dict]]) -> Fig
 
 def plot_pareto_frontier(results: list[dict], dataset: str, model_name: str) -> Figure:
     return plot_pareto_frontier_panel(results, panel_label=f"{dataset} / {model_name}")
+
+
+def _draw_jpeg_compression_panel(ax, dataset_name: str, model_curves: Dict[str, list[float]]) -> None:
+    qualities = JPEG_COMPRESSION_CONFIG["jpeg_qualities"]
+    model_labels = JPEG_COMPRESSION_CONFIG["model_labels"]
+    model_colors = JPEG_COMPRESSION_CONFIG["model_colors"]
+
+    for model_name, asr_curve in model_curves.items():
+        ax.plot(
+            qualities,
+            asr_curve,
+            color=model_colors[model_name],
+            marker=JPEG_COMPRESSION_CONFIG["marker"],
+            linewidth=JPEG_COMPRESSION_CONFIG["line_width"],
+            markersize=JPEG_COMPRESSION_CONFIG["markersize"],
+            label=model_labels.get(model_name, model_name),
+        )
+
+    ax.invert_xaxis()
+    ax.set_title(
+        JPEG_COMPRESSION_CONFIG["dataset_labels"].get(dataset_name, dataset_name),
+        fontsize=JPEG_COMPRESSION_CONFIG["axes_label_fontsize"],
+        pad=8,
+    )
+    ax.set_xlabel(
+        JPEG_COMPRESSION_CONFIG["x_label"],
+        fontsize=JPEG_COMPRESSION_CONFIG["axes_label_fontsize"],
+        labelpad=6,
+    )
+    ax.set_ylabel(
+        JPEG_COMPRESSION_CONFIG["y_label"],
+        fontsize=JPEG_COMPRESSION_CONFIG["axes_label_fontsize"],
+        labelpad=6,
+    )
+    ax.tick_params(axis="both", labelsize=JPEG_COMPRESSION_CONFIG["tick_label_fontsize"])
+    ax.grid(True, linestyle="--", alpha=0.45)
+    ax.legend(
+        loc=JPEG_COMPRESSION_CONFIG["legend_loc"],
+        fontsize=JPEG_COMPRESSION_CONFIG["legend_fontsize"],
+        frameon=True,
+    )
+
+    if sns is not None:
+        sns.despine(ax=ax, offset=2, trim=False)
+    else:
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+
+
+def plot_jpeg_compression_panel(dataset_name: str, model_curves: Dict[str, list[float]]) -> Figure:
+    plt.rcParams["font.family"] = JPEG_COMPRESSION_CONFIG["font_family"]
+    scale = float(JPEG_COMPRESSION_CONFIG["figsize_scale"])
+    width, height = JPEG_COMPRESSION_CONFIG["figsize"]
+    fig, ax = plt.subplots(
+        figsize=(width * scale, height * scale),
+        dpi=JPEG_COMPRESSION_CONFIG["figure_dpi"],
+    )
+    _draw_jpeg_compression_panel(ax, dataset_name, model_curves)
+    plt.tight_layout()
+    return fig
+
+
+def plot_jpeg_compression_comparison(dataset_curves: Dict[str, Dict[str, list[float]]]) -> Figure:
+    plt.rcParams["font.family"] = JPEG_COMPRESSION_CONFIG["font_family"]
+    scale = float(JPEG_COMPRESSION_CONFIG["figsize_scale"])
+    width, height = JPEG_COMPRESSION_CONFIG["figsize"]
+    fig, axes = plt.subplots(
+        1,
+        len(dataset_curves),
+        figsize=(width * len(dataset_curves) * scale, height * scale),
+        dpi=JPEG_COMPRESSION_CONFIG["figure_dpi"],
+        squeeze=False,
+    )
+
+    for ax, (dataset_name, model_curves) in zip(axes[0], dataset_curves.items()):
+        _draw_jpeg_compression_panel(ax, dataset_name, model_curves)
+
+    plt.tight_layout()
+    return fig
 
 
 def _client_from_full_model(full_model: nn.Module) -> nn.Module:
