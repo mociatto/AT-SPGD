@@ -93,12 +93,23 @@ PARETO_FRONTIER_CONFIG = {
     "legend_fontsize": 10,
     "annotation_fontsize": 8,
     "figure_dpi": 100,
+    "save_dpi": 300,
     "figsize": (4.5, 3.5),
-    "display_width_px": 1040,
+    "figsize_scale": 1.0,
+    "display_width_px": 800,
+    "cnn_dataset": "gtsrb",
+    "cnn_model": "resnet18",
+    "transformer_dataset": "gtsrb",
+    "transformer_model": "swin_tiny_patch4_window7_224",
+    "panel_labels": {"cnn": "CNN", "transformer": "Transformer"},
+    "k_ratios": [0.01, 0.02, 0.03, 0.04, 0.05, 0.07, 0.1],
+    "alpha_multipliers": [0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 1.0, 1.5],
+    "steps_sweep": [1, 2, 3, 8],
+    "epsilon": 8.0 / 255.0,
     "suboptimal_color": "lightgray",
     "suboptimal_alpha": 0.7,
     "suboptimal_size": 20,
-    "optimal_color": "royalblue",
+    "optimal_color": "#FFBE0B",
     "optimal_marker": "o",
     "optimal_linewidth": 1.5,
     "optimal_markersize": 6,
@@ -426,7 +437,7 @@ def plot_average_radial_energy_comparison(panel_vis_dicts: Dict[str, list[dict]]
     return fig
 
 
-def plot_pareto_frontier(results: list[dict], dataset: str, model_name: str) -> Figure:
+def _pareto_split(results: list[dict]) -> Tuple[list[dict], list[dict]]:
     sorted_results = sorted(results, key=lambda item: item["psnr"], reverse=True)
     frontier = []
     max_asr_seen = -1.0
@@ -438,12 +449,11 @@ def plot_pareto_frontier(results: list[dict], dataset: str, model_name: str) -> 
 
     frontier_ids = {id(result) for result in frontier}
     suboptimal = [result for result in sorted_results if id(result) not in frontier_ids]
+    return frontier, suboptimal
 
-    plt.rcParams["font.family"] = PARETO_FRONTIER_CONFIG["font_family"]
-    fig, ax = plt.subplots(
-        figsize=PARETO_FRONTIER_CONFIG["figsize"],
-        dpi=PARETO_FRONTIER_CONFIG["figure_dpi"],
-    )
+
+def _draw_pareto_frontier_panel(ax, results: list[dict], panel_label: str | None = None) -> None:
+    frontier, suboptimal = _pareto_split(results)
 
     if suboptimal:
         ax.scatter(
@@ -476,6 +486,17 @@ def plot_pareto_frontier(results: list[dict], dataset: str, model_name: str) -> 
                 fontsize=PARETO_FRONTIER_CONFIG["annotation_fontsize"],
             )
 
+    if panel_label is not None:
+        ax.text(
+            0.02,
+            0.96,
+            panel_label,
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontsize=PARETO_FRONTIER_CONFIG["axes_label_fontsize"],
+        )
+
     ax.set_xlabel(
         "Stealth (PSNR in dB \u2192 Higher is Better)",
         fontsize=PARETO_FRONTIER_CONFIG["axes_label_fontsize"],
@@ -498,8 +519,41 @@ def plot_pareto_frontier(results: list[dict], dataset: str, model_name: str) -> 
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
 
+
+def plot_pareto_frontier_panel(results: list[dict], panel_label: str) -> Figure:
+    plt.rcParams["font.family"] = PARETO_FRONTIER_CONFIG["font_family"]
+    scale = float(PARETO_FRONTIER_CONFIG["figsize_scale"])
+    width, height = PARETO_FRONTIER_CONFIG["figsize"]
+    fig, ax = plt.subplots(
+        figsize=(width * scale, height * scale),
+        dpi=PARETO_FRONTIER_CONFIG["figure_dpi"],
+    )
+    _draw_pareto_frontier_panel(ax, results, panel_label=panel_label)
     plt.tight_layout()
     return fig
+
+
+def plot_pareto_frontier_comparison(panel_results: Dict[str, list[dict]]) -> Figure:
+    plt.rcParams["font.family"] = PARETO_FRONTIER_CONFIG["font_family"]
+    scale = float(PARETO_FRONTIER_CONFIG["figsize_scale"])
+    width, height = PARETO_FRONTIER_CONFIG["figsize"]
+    fig, axes = plt.subplots(
+        1,
+        len(panel_results),
+        figsize=(width * len(panel_results) * scale, height * scale),
+        dpi=PARETO_FRONTIER_CONFIG["figure_dpi"],
+        squeeze=False,
+    )
+
+    for ax, (panel_label, results) in zip(axes[0], panel_results.items()):
+        _draw_pareto_frontier_panel(ax, results, panel_label=panel_label)
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_pareto_frontier(results: list[dict], dataset: str, model_name: str) -> Figure:
+    return plot_pareto_frontier_panel(results, panel_label=f"{dataset} / {model_name}")
 
 
 def _client_from_full_model(full_model: nn.Module) -> nn.Module:

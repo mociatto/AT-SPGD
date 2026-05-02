@@ -31,12 +31,14 @@ from src.models.split_models import EMB_DIM, FullVFLModel, ImageClient, VFLServe
 from src.visualization.plots import (
     GRADCAM_CONTOUR_CONFIG,
     MAGNIFIED_NOISE_CONFIG,
+    PARETO_FRONTIER_CONFIG,
     RADIAL_ENERGY_CONFIG,
     plot_average_radial_energy_comparison,
     plot_average_radial_energy_panel,
     plot_gradcam_contour_row,
     plot_magnified_noise_row,
-    plot_pareto_frontier,
+    plot_pareto_frontier_comparison,
+    plot_pareto_frontier_panel,
 )
 
 LEGACY_KAGGLE_PATH = "/kaggle/input/notebooks/mostafaanoosha/at-spgd-02-attack"
@@ -172,61 +174,116 @@ for panel_key, panel_label, model_name in [
     plt.close(fig_panel)
 
 # %%
-PARETO_DATASET = "gtsrb"
-PARETO_MODEL = "swin_tiny_patch4_window7_224"
 PARETO_SAMPLES = 64
-K_RATIOS = [0.01, 0.02, 0.03, 0.04, 0.05, 0.1]
-ALPHA_MULTIPLIERS = [0.1, 0.2, 0.5, 1.0, 1.5]
-STEPS_SWEEP = [1, 2, 5, 10]
-EPSILON = 8.0 / 255.0
+PARETO_PANEL_LABELS = PARETO_FRONTIER_CONFIG["panel_labels"]
+PARETO_CASES = {
+    PARETO_PANEL_LABELS["cnn"]: {
+        "panel_key": "cnn",
+        "dataset": PARETO_FRONTIER_CONFIG["cnn_dataset"],
+        "model": PARETO_FRONTIER_CONFIG["cnn_model"],
+    },
+    PARETO_PANEL_LABELS["transformer"]: {
+        "panel_key": "transformer",
+        "dataset": PARETO_FRONTIER_CONFIG["transformer_dataset"],
+        "model": PARETO_FRONTIER_CONFIG["transformer_model"],
+    },
+}
+
+
+def build_vfl_model(dataset_name: str, model_name: str, device: torch.device) -> FullVFLModel:
+    checkpoint = load_checkpoint(CHECKPOINT_DIR / f"01_baseline_{dataset_name}_{model_name}.pth")
+    num_classes = int(checkpoint["num_classes"])
+    client = ImageClient(model_name=model_name, dim=EMB_DIM)
+    server = VFLServer(emb_dim=EMB_DIM, num_classes=num_classes)
+    client.load_state_dict(checkpoint["image_client"])
+    server.load_state_dict(checkpoint["vfl_server"])
+    return FullVFLModel(client, server, normalize_inputs=True).eval().to(device)
+
+
+def load_visual_artifact(dataset_name: str, model_name: str) -> dict:
+    artifact_path = Path(LEGACY_KAGGLE_PATH) / f"vis_artifacts_{dataset_name}_{model_name}.pt"
+    try:
+        return torch.load(artifact_path, map_location="cpu", weights_only=False)
+    except TypeError:
+        return torch.load(artifact_path, map_location="cpu")
+
+
+def run_pareto_sweep(dataset_name: str, model_name: str, device: torch.device) -> list[dict]:
+    model = build_vfl_model(dataset_name, model_name, device)
+    artifact = load_visual_artifact(dataset_name, model_name)
+    images = artifact["clean_images"][:PARETO_SAMPLES].to(device)
+    labels = artifact["labels"][:PARETO_SAMPLES].to(device)
+
+    results = []
+    epsilon = float(PARETO_FRONTIER_CONFIG["epsilon"])
+    for k in PARETO_FRONTIER_CONFIG["k_ratios"]:
+        for alpha_multiplier in PARETO_FRONTIER_CONFIG["alpha_multipliers"]:
+            for steps in PARETO_FRONTIER_CONFIG["steps_sweep"]:
+                attack = ATSPGD(
+                    model=model,
+                    eps=epsilon,
+                    alpha_f=(epsilon / steps) * alpha_multiplier,
+                    steps=steps,
+                    K=k,
+                ).eval()
+                adversarial = attack(images, labels)
+
+                with torch.no_grad():
+                    logits = model(adversarial)
+                    asr = (logits.argmax(dim=1) != labels).float().mean().item() * 100.0
+                    mse = torch.mean((adversarial - images) ** 2, dim=[1, 2, 3])
+                    psnr = (20 * torch.log10(1.0 / torch.sqrt(mse))).mean().item()
+
+                results.append(
+                    {
+                        "k": k,
+                        "alpha": alpha_multiplier,
+                        "steps": steps,
+                        "asr": asr,
+                        "psnr": psnr,
+                    }
+                )
+
+                del attack, adversarial, logits
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+    del model, artifact, images, labels
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return results
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-pareto_checkpoint = load_checkpoint(CHECKPOINT_DIR / f"01_baseline_{PARETO_DATASET}_{PARETO_MODEL}.pth")
-pareto_num_classes = int(pareto_checkpoint["num_classes"])
+pareto_results = {
+    panel_label: run_pareto_sweep(case["dataset"], case["model"], device)
+    for panel_label, case in PARETO_CASES.items()
+}
 
-pareto_client = ImageClient(model_name=PARETO_MODEL, dim=EMB_DIM)
-pareto_server = VFLServer(emb_dim=EMB_DIM, num_classes=pareto_num_classes)
-pareto_client.load_state_dict(pareto_checkpoint["image_client"])
-pareto_server.load_state_dict(pareto_checkpoint["vfl_server"])
-pareto_model = FullVFLModel(pareto_client, pareto_server, normalize_inputs=True).eval().to(device)
-
-PARETO_ARTIFACT_PATH = Path(LEGACY_KAGGLE_PATH) / f"vis_artifacts_{PARETO_DATASET}_{PARETO_MODEL}.pt"
-try:
-    vis_dict_pareto = torch.load(PARETO_ARTIFACT_PATH, map_location="cpu", weights_only=False)
-except TypeError:
-    vis_dict_pareto = torch.load(PARETO_ARTIFACT_PATH, map_location="cpu")
-
-images = vis_dict_pareto["clean_images"][:PARETO_SAMPLES].to(device)
-labels = vis_dict_pareto["labels"][:PARETO_SAMPLES].to(device)
-
-results = []
-for k in K_RATIOS:
-    for a_mult in ALPHA_MULTIPLIERS:
-        for s in STEPS_SWEEP:
-            atk = ATSPGD(
-                model=pareto_model,
-                eps=EPSILON,
-                alpha_f=(EPSILON / s) * a_mult,
-                steps=s,
-                K=k,
-            ).eval()
-            adv = atk(images, labels)
-
-            with torch.no_grad():
-                logits = pareto_model(adv)
-                asr = (logits.argmax(dim=1) != labels).float().mean().item() * 100.0
-                mse = torch.mean((adv - images) ** 2, dim=[1, 2, 3])
-                psnr = (20 * torch.log10(1.0 / torch.sqrt(mse))).mean().item()
-
-            results.append({"k": k, "alpha": a_mult, "steps": s, "asr": asr, "psnr": psnr})
-            del atk, adv, logits
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-fig_pareto = plot_pareto_frontier(results, PARETO_DATASET, PARETO_MODEL)
-plt.show()
+fig_pareto = plot_pareto_frontier_comparison(pareto_results)
+pareto_preview_buffer = io.BytesIO()
 fig_pareto.savefig(
-    FIGURE_DIR / "03_pareto_frontier.pdf",
+    pareto_preview_buffer,
+    format="png",
     bbox_inches="tight",
-    dpi=300,
+    dpi=PARETO_FRONTIER_CONFIG.get("figure_dpi", 100),
 )
+pareto_preview_buffer.seek(0)
+display(
+    IPythonImage(
+        data=pareto_preview_buffer.getvalue(),
+        width=PARETO_FRONTIER_CONFIG.get("display_width_px", 800),
+    )
+)
+plt.close(fig_pareto)
+
+for panel_label, case in PARETO_CASES.items():
+    panel_key = case["panel_key"]
+    model_name = case["model"]
+    fig_panel = plot_pareto_frontier_panel(pareto_results[panel_label], panel_label=panel_label)
+    fig_panel.savefig(
+        FIGURE_DIR / f"03_pareto_frontier_{panel_key}_{model_name}.pdf",
+        bbox_inches="tight",
+        dpi=PARETO_FRONTIER_CONFIG.get("save_dpi", 300),
+    )
+    plt.close(fig_panel)
