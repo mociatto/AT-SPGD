@@ -32,10 +32,11 @@ from src.visualization.plots import (
     GRADCAM_CONTOUR_CONFIG,
     MAGNIFIED_NOISE_CONFIG,
     RADIAL_ENERGY_CONFIG,
+    plot_average_radial_energy_comparison,
+    plot_average_radial_energy_panel,
     plot_gradcam_contour_row,
     plot_magnified_noise_row,
     plot_pareto_frontier,
-    plot_radial_energy,
 )
 
 LEGACY_KAGGLE_PATH = "/kaggle/input/notebooks/mostafaanoosha/at-spgd-02-attack"
@@ -113,16 +114,30 @@ for i in range(num_gradcam_samples):
     plt.close(fig_cam)
 
 # %%
-ENERGY_DATASET = "svhn"
-ENERGY_MODEL = "swin_tiny_patch4_window7_224"
-ENERGY_ARTIFACT_PATH = Path(LEGACY_KAGGLE_PATH) / f"vis_artifacts_{ENERGY_DATASET}_{ENERGY_MODEL}.pt"
+ENERGY_DATASETS = RADIAL_ENERGY_CONFIG["datasets"]
+ENERGY_CNN_MODEL = RADIAL_ENERGY_CONFIG["cnn_model"]
+ENERGY_TRANSFORMER_MODEL = RADIAL_ENERGY_CONFIG["transformer_model"]
+ENERGY_PANEL_LABELS = RADIAL_ENERGY_CONFIG["panel_labels"]
 
-try:
-    vis_dict_energy = torch.load(ENERGY_ARTIFACT_PATH, map_location="cpu", weights_only=False)
-except TypeError:
-    vis_dict_energy = torch.load(ENERGY_ARTIFACT_PATH, map_location="cpu")
 
-fig_energy = plot_radial_energy(vis_dict_energy)
+def load_energy_artifacts(model_name: str) -> list[dict]:
+    artifacts = []
+    for dataset_name in ENERGY_DATASETS:
+        artifact_path = Path(LEGACY_KAGGLE_PATH) / f"vis_artifacts_{dataset_name}_{model_name}.pt"
+        try:
+            artifact = torch.load(artifact_path, map_location="cpu", weights_only=False)
+        except TypeError:
+            artifact = torch.load(artifact_path, map_location="cpu")
+        artifacts.append(artifact)
+    return artifacts
+
+
+energy_panels = {
+    ENERGY_PANEL_LABELS["cnn"]: load_energy_artifacts(ENERGY_CNN_MODEL),
+    ENERGY_PANEL_LABELS["transformer"]: load_energy_artifacts(ENERGY_TRANSFORMER_MODEL),
+}
+
+fig_energy = plot_average_radial_energy_comparison(energy_panels)
 radial_preview_buffer = io.BytesIO()
 fig_energy.savefig(
     radial_preview_buffer,
@@ -143,6 +158,18 @@ fig_energy.savefig(
     dpi=RADIAL_ENERGY_CONFIG.get("save_dpi", 300),
 )
 plt.close(fig_energy)
+
+for panel_key, panel_label, model_name in [
+    ("cnn", ENERGY_PANEL_LABELS["cnn"], ENERGY_CNN_MODEL),
+    ("transformer", ENERGY_PANEL_LABELS["transformer"], ENERGY_TRANSFORMER_MODEL),
+]:
+    fig_panel = plot_average_radial_energy_panel(energy_panels[panel_label], panel_label=panel_label)
+    fig_panel.savefig(
+        FIGURE_DIR / f"03_radial_energy_{panel_key}_{model_name}.pdf",
+        bbox_inches="tight",
+        dpi=RADIAL_ENERGY_CONFIG.get("save_dpi", 300),
+    )
+    plt.close(fig_panel)
 
 # %%
 PARETO_DATASET = "gtsrb"

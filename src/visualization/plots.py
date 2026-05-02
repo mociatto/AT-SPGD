@@ -35,7 +35,7 @@ GRADCAM_CONTOUR_CONFIG = {
     "figure_dpi": 100,
     "save_dpi": 300,
     "display_width_px": 800,
-    "num_samples": 10,
+    "num_samples": 5,
     "contour_levels": 8,
     "contour_min_level": 0.15,
     "contour_max_level": 0.95,
@@ -64,8 +64,13 @@ RADIAL_ENERGY_CONFIG = {
     "legend_loc": "upper right",
     "figure_dpi": 100,
     "save_dpi": 300,
-    "display_width_px": 1040,
+    "display_width_px": 800,
     "figsize": (4.5, 3.5),
+    "figsize_scale": 1.0,
+    "datasets": ["cifar10", "cifar100", "svhn", "gtsrb"],
+    "cnn_model": "resnet18",
+    "transformer_model": "swin_tiny_patch4_window7_224",
+    "panel_labels": {"cnn": "CNN", "transformer": "Transformer"},
     "line_width": 1.0,
     "smooth_window": 3,
     "fill_alpha": 0.0,
@@ -73,11 +78,11 @@ RADIAL_ENERGY_CONFIG = {
     "x_label": "Spatial Frequency",
     "y_label": "Mean Adversarial Energy",
     "attack_styles": {
-        "PGD": {"color": "#3d348b", "linestyle": "-"},
-        "APGD": {"color": "#7678ed", "linestyle": "-"},
-        "MIFGSM": {"color": "#a8dadc", "linestyle": "-"},
-        "SSA": {"color": "#f7b801", "linestyle": "-"},
-        "Adaptive": {"color": "#f18701", "linestyle": "-"},
+        "PGD": {"color": "#FFBE0B", "linestyle": "-"},
+        "APGD": {"color": "#FB5607", "linestyle": "-"},
+        "MIFGSM": {"color": "#FF006E", "linestyle": "-"},
+        "SSA": {"color": "#8338EC", "linestyle": "-"},
+        "Adaptive": {"color": "#3A86FF", "linestyle": "-"},
     },
 }
 
@@ -302,6 +307,120 @@ def plot_radial_energy(vis_dict: dict) -> Figure:
     else:
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
+
+    plt.tight_layout()
+    return fig
+
+
+def _average_radial_profiles(vis_dicts: list[dict]) -> Dict[str, np.ndarray]:
+    profile_groups: Dict[str, List[np.ndarray]] = {}
+
+    for vis_dict in vis_dicts:
+        clean_images = vis_dict["clean_images"]
+        for attack_name in _available_attacks(vis_dict):
+            profile = get_radial_profile(
+                clean_images,
+                vis_dict[_resolve_attack_key(vis_dict, attack_name)],
+            )
+            profile_groups.setdefault(attack_name, []).append(profile)
+
+    averaged_profiles: Dict[str, np.ndarray] = {}
+    for attack_name, profiles in profile_groups.items():
+        min_len = min(len(profile) for profile in profiles)
+        stacked_profiles = np.stack([profile[:min_len] for profile in profiles], axis=0)
+        averaged_profiles[attack_name] = stacked_profiles.mean(axis=0)
+
+    return averaged_profiles
+
+
+def _draw_average_radial_energy_panel(ax, averaged_profiles: Dict[str, np.ndarray], panel_label: str | None = None) -> None:
+    if not averaged_profiles:
+        raise KeyError("No adversarial image tensors found for averaged radial energy plotting.")
+
+    min_len = min(len(profile) for profile in averaged_profiles.values())
+    freq_axis = np.arange(min_len, dtype=float)
+    attack_styles = RADIAL_ENERGY_CONFIG["attack_styles"]
+    smooth_window = int(RADIAL_ENERGY_CONFIG["smooth_window"])
+
+    for attack_name, profile in averaged_profiles.items():
+        style_key = _radial_style_key(attack_name)
+        style = attack_styles.get(style_key, {"color": "black", "linestyle": "-"})
+        smoothed_profile = _smooth_curve(profile[:min_len], smooth_window)
+        ax.plot(
+            freq_axis,
+            smoothed_profile,
+            color=style["color"],
+            linestyle=style["linestyle"],
+            linewidth=RADIAL_ENERGY_CONFIG["line_width"],
+            label=_radial_label(attack_name),
+        )
+        ax.fill_between(
+            freq_axis,
+            0,
+            smoothed_profile,
+            color=style["color"],
+            alpha=RADIAL_ENERGY_CONFIG["fill_alpha"],
+        )
+
+    ax.set_yscale(RADIAL_ENERGY_CONFIG["y_scale"])
+    ax.set_xlabel(
+        RADIAL_ENERGY_CONFIG["x_label"],
+        fontsize=RADIAL_ENERGY_CONFIG["axes_label_fontsize"],
+    )
+    ax.set_ylabel(
+        RADIAL_ENERGY_CONFIG["y_label"],
+        fontsize=RADIAL_ENERGY_CONFIG["axes_label_fontsize"],
+    )
+    if panel_label is not None:
+        ax.text(
+            0.02,
+            0.96,
+            panel_label,
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontsize=RADIAL_ENERGY_CONFIG["axes_label_fontsize"],
+        )
+    ax.tick_params(axis="both", labelsize=RADIAL_ENERGY_CONFIG["tick_label_fontsize"])
+    ax.legend(
+        loc=RADIAL_ENERGY_CONFIG["legend_loc"],
+        fontsize=RADIAL_ENERGY_CONFIG["legend_fontsize"],
+        frameon=True,
+    )
+    if sns is not None:
+        sns.despine(ax=ax, offset=2, trim=False)
+    else:
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+
+
+def plot_average_radial_energy_panel(vis_dicts: list[dict], panel_label: str) -> Figure:
+    plt.rcParams["font.family"] = RADIAL_ENERGY_CONFIG["font_family"]
+    scale = float(RADIAL_ENERGY_CONFIG["figsize_scale"])
+    width, height = RADIAL_ENERGY_CONFIG["figsize"]
+    fig, ax = plt.subplots(
+        figsize=(width * scale, height * scale),
+        dpi=RADIAL_ENERGY_CONFIG["figure_dpi"],
+    )
+    _draw_average_radial_energy_panel(ax, _average_radial_profiles(vis_dicts), panel_label=panel_label)
+    plt.tight_layout()
+    return fig
+
+
+def plot_average_radial_energy_comparison(panel_vis_dicts: Dict[str, list[dict]]) -> Figure:
+    plt.rcParams["font.family"] = RADIAL_ENERGY_CONFIG["font_family"]
+    scale = float(RADIAL_ENERGY_CONFIG["figsize_scale"])
+    width, height = RADIAL_ENERGY_CONFIG["figsize"]
+    fig, axes = plt.subplots(
+        1,
+        len(panel_vis_dicts),
+        figsize=(width * len(panel_vis_dicts) * scale, height * scale),
+        dpi=RADIAL_ENERGY_CONFIG["figure_dpi"],
+        squeeze=False,
+    )
+
+    for ax, (panel_label, vis_dicts) in zip(axes[0], panel_vis_dicts.items()):
+        _draw_average_radial_energy_panel(ax, _average_radial_profiles(vis_dicts), panel_label=panel_label)
 
     plt.tight_layout()
     return fig
