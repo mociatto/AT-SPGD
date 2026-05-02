@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 # %%
+import io
 from pathlib import Path
 import sys
 
@@ -28,9 +29,10 @@ from IPython.display import display
 from src.attacks.at_spgd import ATSPGD
 from src.models.split_models import EMB_DIM, FullVFLModel, ImageClient, VFLServer
 from src.visualization.plots import (
+    GRADCAM_CONTOUR_CONFIG,
     MAGNIFIED_NOISE_CONFIG,
     RADIAL_ENERGY_CONFIG,
-    plot_gradcam_contours,
+    plot_gradcam_contour_row,
     plot_magnified_noise_row,
     plot_pareto_frontier,
     plot_radial_energy,
@@ -67,11 +69,12 @@ for i in range(num_samples):
     pdf_path = FIGURE_DIR / f"03_magnified_noise_sample_{i}.pdf"
     fig.savefig(pdf_path, bbox_inches="tight", dpi=MAGNIFIED_NOISE_CONFIG.get("save_dpi", 300))
 
-    preview_path = FIGURE_DIR / f"03_magnified_noise_preview_{i}.png"
-    fig.savefig(preview_path, bbox_inches="tight", dpi=MAGNIFIED_NOISE_CONFIG.get("figure_dpi", 100))
+    preview_buffer = io.BytesIO()
+    fig.savefig(preview_buffer, format="png", bbox_inches="tight", dpi=MAGNIFIED_NOISE_CONFIG.get("figure_dpi", 100))
+    preview_buffer.seek(0)
     display(
         IPythonImage(
-            filename=str(preview_path),
+            data=preview_buffer.getvalue(),
             width=MAGNIFIED_NOISE_CONFIG.get("display_width_px", 800),
         )
     )
@@ -89,9 +92,25 @@ client.load_state_dict(checkpoint["image_client"])
 server.load_state_dict(checkpoint["vfl_server"])
 full_model = FullVFLModel(client, server, normalize_inputs=True).eval().to(device)
 
-fig_cam = plot_gradcam_contours(full_model, VIS_MODEL, vis_dict, num_samples=5)
-plt.show()
-fig_cam.savefig(FIGURE_DIR / "03_gradcam_contours.pdf", bbox_inches="tight")
+num_gradcam_samples = int(GRADCAM_CONTOUR_CONFIG.get("num_samples", 5))
+
+for i in range(num_gradcam_samples):
+    fig_cam = plot_gradcam_contour_row(full_model, VIS_MODEL, vis_dict, sample_idx=i)
+
+    pdf_path = FIGURE_DIR / f"03_gradcam_contours_sample_{i}.pdf"
+    fig_cam.savefig(pdf_path, bbox_inches="tight", dpi=GRADCAM_CONTOUR_CONFIG.get("save_dpi", 300))
+
+    preview_buffer = io.BytesIO()
+    fig_cam.savefig(preview_buffer, format="png", bbox_inches="tight", dpi=GRADCAM_CONTOUR_CONFIG.get("figure_dpi", 100))
+    preview_buffer.seek(0)
+    display(
+        IPythonImage(
+            data=preview_buffer.getvalue(),
+            width=GRADCAM_CONTOUR_CONFIG.get("display_width_px", 800),
+        )
+    )
+
+    plt.close(fig_cam)
 
 # %%
 ENERGY_DATASET = "svhn"
@@ -104,15 +123,17 @@ except TypeError:
     vis_dict_energy = torch.load(ENERGY_ARTIFACT_PATH, map_location="cpu")
 
 fig_energy = plot_radial_energy(vis_dict_energy)
-radial_preview_path = FIGURE_DIR / "03_radial_energy_preview.png"
+radial_preview_buffer = io.BytesIO()
 fig_energy.savefig(
-    radial_preview_path,
+    radial_preview_buffer,
+    format="png",
     bbox_inches="tight",
     dpi=RADIAL_ENERGY_CONFIG.get("figure_dpi", 100),
 )
+radial_preview_buffer.seek(0)
 display(
     IPythonImage(
-        filename=str(radial_preview_path),
+        data=radial_preview_buffer.getvalue(),
         width=RADIAL_ENERGY_CONFIG.get("display_width_px", 520),
     )
 )

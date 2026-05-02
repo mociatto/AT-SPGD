@@ -32,19 +32,25 @@ GRADCAM_CONTOUR_CONFIG = {
     "font_family": "serif",
     "title_fontsize": 10,
     "label_fontsize": 10,
-    "figure_dpi": 300,
+    "figure_dpi": 100,
+    "save_dpi": 300,
+    "display_width_px": 800,
     "num_samples": 10,
     "contour_levels": 8,
     "contour_min_level": 0.15,
     "contour_max_level": 0.95,
-    "contour_color_low": "#3d348b",
-    "contour_color_high": "#f18701",
+    "contour_color_low": "#3A86FF",
+    "contour_color_midlow": "#8338EC",
+    "contour_color_mid": "#FF006E",
+    "contour_color_midhigh": "#FB5607",
+    "contour_color_high": "#FFBE0B",
     "contour_smooth_sigma": 8,
     "contour_linewidth": 1.0,
     "contour_alpha": 1.0,
     "back_image_alpha": 0.5,
     "image_border_width": 0.0,
     "image_border_color": "black",
+    "figsize_per_sample": (10, 2),
     "figsize_scale": 2.15,
     "target_class": "predicted",
     "use_fallback_input_gradient": True,
@@ -532,6 +538,9 @@ def plot_gradcam_contours(
         "custom_cam",
         [
             GRADCAM_CONTOUR_CONFIG["contour_color_low"],
+            GRADCAM_CONTOUR_CONFIG["contour_color_midlow"],
+            GRADCAM_CONTOUR_CONFIG["contour_color_mid"],
+            GRADCAM_CONTOUR_CONFIG["contour_color_midhigh"],
             GRADCAM_CONTOUR_CONFIG["contour_color_high"],
         ],
     )
@@ -589,6 +598,81 @@ def plot_gradcam_contours(
                     f"Sample {sample_idx}",
                     fontsize=GRADCAM_CONTOUR_CONFIG["label_fontsize"],
                 )
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_gradcam_contour_row(
+    full_model: nn.Module,
+    model_name: str,
+    vis_dict: dict,
+    sample_idx: int,
+) -> Figure:
+    clean_images = vis_dict["clean_images"]
+    labels = vis_dict["labels"]
+    attacks = _available_attacks(vis_dict)
+    attack_keys = [_resolve_attack_key(vis_dict, attack_name) for attack_name in attacks]
+    max_samples = min(clean_images.shape[0], labels.shape[0], *[vis_dict[key].shape[0] for key in attack_keys])
+    if sample_idx >= max_samples:
+        raise IndexError(f"sample_idx={sample_idx} is out of range for {max_samples} Grad-CAM samples.")
+
+    column_count = 1 + len(attacks)
+    device = next(full_model.parameters()).device
+    target_layer = _resolve_gradcam_target_layer(full_model, model_name)
+    cmap = LinearSegmentedColormap.from_list(
+        "custom_cam",
+        [
+            GRADCAM_CONTOUR_CONFIG["contour_color_low"],
+            GRADCAM_CONTOUR_CONFIG["contour_color_midlow"],
+            GRADCAM_CONTOUR_CONFIG["contour_color_mid"],
+            GRADCAM_CONTOUR_CONFIG["contour_color_midhigh"],
+            GRADCAM_CONTOUR_CONFIG["contour_color_high"],
+        ],
+    )
+    contour_levels = np.linspace(
+        float(GRADCAM_CONTOUR_CONFIG["contour_min_level"]),
+        float(GRADCAM_CONTOUR_CONFIG["contour_max_level"]),
+        int(GRADCAM_CONTOUR_CONFIG["contour_levels"]),
+    )
+
+    plt.rcParams["font.family"] = GRADCAM_CONTOUR_CONFIG["font_family"]
+    fig, axes = plt.subplots(
+        1,
+        column_count,
+        figsize=GRADCAM_CONTOUR_CONFIG["figsize_per_sample"],
+        dpi=int(GRADCAM_CONTOUR_CONFIG["figure_dpi"]),
+        squeeze=False,
+    )
+
+    label = labels[sample_idx].to(device)
+    row_items = [clean_images[sample_idx]]
+    row_items.extend(vis_dict[_resolve_attack_key(vis_dict, attack_name)][sample_idx] for attack_name in attacks)
+
+    for column_idx, image in enumerate(row_items):
+        ax = axes[0, column_idx]
+        image = image.to(device)
+        cam_map = _compute_gradcam_contour_map(full_model, target_layer, image, label)
+        cam_np = cam_map.numpy()
+        smooth_sigma = float(GRADCAM_CONTOUR_CONFIG["contour_smooth_sigma"])
+        if smooth_sigma > 0:
+            cam_np = gaussian_filter(cam_np, sigma=smooth_sigma)
+
+        ax.imshow(_to_image_array(image), alpha=float(GRADCAM_CONTOUR_CONFIG["back_image_alpha"]))
+        ax.contour(
+            cam_np,
+            levels=contour_levels,
+            cmap=cmap,
+            linewidths=float(GRADCAM_CONTOUR_CONFIG["contour_linewidth"]),
+            alpha=float(GRADCAM_CONTOUR_CONFIG["contour_alpha"]),
+        )
+        ax.set_xticks([])
+        ax.set_yticks([])
+        border_width = float(GRADCAM_CONTOUR_CONFIG["image_border_width"])
+        for spine in ax.spines.values():
+            spine.set_visible(border_width > 0)
+            spine.set_linewidth(border_width)
+            spine.set_edgecolor(GRADCAM_CONTOUR_CONFIG["image_border_color"])
 
     plt.tight_layout()
     return fig
