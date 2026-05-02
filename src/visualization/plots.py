@@ -107,12 +107,16 @@ PARETO_FRONTIER_CONFIG = {
     "steps_sweep": [1, 2, 3, 8],
     "epsilon": 8.0 / 255.0,
     "suboptimal_color": "lightgray",
-    "suboptimal_alpha": 0.7,
+    "suboptimal_alpha": 1.0,
     "suboptimal_size": 20,
-    "optimal_color": "#FFBE0B",
+    "optimal_color": "#3A86FF",
     "optimal_marker": "o",
-    "optimal_linewidth": 1.0,
+    "optimal_linewidth": 0.0,
     "optimal_markersize": 6,
+    "annotation_x_offset": 8,
+    "annotation_y_offsets": [0, 5, -5, 10, -10, 15, -15, 20, -20],
+    "annotation_min_gap_px": 10,
+    "annotation_arrow_alpha": 0.45,
 }
 
 ATTACK_ORDER = ["PGD", "APGD", "MIFGSM", "SSA", "AT-SPGD (Ours)"]
@@ -476,14 +480,40 @@ def _draw_pareto_frontier_panel(ax, results: list[dict], panel_label: str | None
             label="Pareto Frontier",
         )
 
+        used_label_y = []
+        points_to_pixels = ax.figure.dpi / 72.0
+        y_offsets = PARETO_FRONTIER_CONFIG["annotation_y_offsets"]
+        min_gap = float(PARETO_FRONTIER_CONFIG["annotation_min_gap_px"])
+
         for result in frontier:
+            _, point_y = ax.transData.transform((result["psnr"], result["asr"]))
+            selected_y_offset = y_offsets[0]
+            for candidate_offset in y_offsets:
+                candidate_y = point_y + candidate_offset * points_to_pixels
+                if all(abs(candidate_y - used_y) >= min_gap for used_y in used_label_y):
+                    selected_y_offset = candidate_offset
+                    used_label_y.append(candidate_y)
+                    break
+            else:
+                candidate_y = point_y + selected_y_offset * points_to_pixels
+                used_label_y.append(candidate_y)
+
             ax.annotate(
                 f"K={result['k']}",
                 (result["psnr"], result["asr"]),
                 textcoords="offset points",
-                xytext=(0, 8),
-                ha="center",
+                xytext=(PARETO_FRONTIER_CONFIG["annotation_x_offset"], selected_y_offset),
+                ha="left",
+                va="center",
                 fontsize=PARETO_FRONTIER_CONFIG["annotation_fontsize"],
+                arrowprops={
+                    "arrowstyle": "-",
+                    "color": PARETO_FRONTIER_CONFIG["optimal_color"],
+                    "alpha": PARETO_FRONTIER_CONFIG["annotation_arrow_alpha"],
+                    "linewidth": 0.6,
+                    "shrinkA": 0,
+                    "shrinkB": 3,
+                },
             )
 
     if panel_label is not None:
