@@ -111,7 +111,7 @@ plt.close(fig_energy)
 PARETO_DATASET = "gtsrb"
 PARETO_MODEL = "swin_tiny_patch4_window7_224"
 PARETO_SAMPLES = 64
-K_RATIOS = [0.01, 0.02, 0.05, 0.1]
+K_RATIOS = [0.01, 0.02, 0.03, 0.04, 0.05, 0.1]
 ALPHA_MULTIPLIERS = [0.1, 0.2, 0.5, 1.0, 1.5]
 STEPS_SWEEP = [1, 2, 5, 10]
 EPSILON = 8.0 / 255.0

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import urllib.error
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -43,21 +44,47 @@ def load_image_dataset(
     name = dataset_name.lower()
     root = Path(data_root) if data_root is not None else default_data_root()
     transform = image_transform(image_size=image_size)
+    KAGGLE_FALLBACKS = {
+        "cifar10": Path("/kaggle/input/cifar10-python"),
+        "cifar100": Path("/kaggle/input/cifar100"),
+    }
+    if Path("/kaggle/input/datasets/pankrzysiu/cifar10-python").exists():
+        KAGGLE_FALLBACKS["cifar10"] = Path("/kaggle/input/datasets/pankrzysiu/cifar10-python")
+    if Path("/kaggle/input/datasets/fedesoriano/cifar100").exists():
+        KAGGLE_FALLBACKS["cifar100"] = Path("/kaggle/input/datasets/fedesoriano/cifar100")
 
     if name == "cifar10":
-        dataset = datasets.CIFAR10(
-            root=root,
-            train=split == "train",
-            download=True,
-            transform=transform,
-        )
+        try:
+            dataset = datasets.CIFAR10(
+                root=root,
+                train=split == "train",
+                download=True,
+                transform=transform,
+            )
+        except Exception:
+            print(f"Official download failed for {name}. Falling back to local Kaggle dataset...")
+            dataset = datasets.CIFAR10(
+                root=KAGGLE_FALLBACKS[name],
+                train=split == "train",
+                download=False,
+                transform=transform,
+            )
     elif name == "cifar100":
-        dataset = datasets.CIFAR100(
-            root=root,
-            train=split == "train",
-            download=True,
-            transform=transform,
-        )
+        try:
+            dataset = datasets.CIFAR100(
+                root=root,
+                train=split == "train",
+                download=True,
+                transform=transform,
+            )
+        except Exception:
+            print(f"Official download failed for {name}. Falling back to local Kaggle dataset...")
+            dataset = datasets.CIFAR100(
+                root=KAGGLE_FALLBACKS[name],
+                train=split == "train",
+                download=False,
+                transform=transform,
+            )
     elif name == "svhn":
         dataset = datasets.SVHN(
             root=root,
