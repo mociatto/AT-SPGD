@@ -17,11 +17,12 @@ except ImportError:
 
 MAGNIFIED_NOISE_CONFIG = {
     "font_family": "serif",
-    "title_fontsize": 10,
-    "label_fontsize": 10,
-    "figure_dpi": 300,
+    "title_fontsize": 12,
+    "figure_dpi": 100,
+    "save_dpi": 300,
+    "display_width_px": 800,
     "noise_magnification": 10.0,
-    "num_samples": 10,
+    "num_samples": 5,
     "figsize_per_sample": (10, 2),
     "image_border_width": 0.0,
     "image_border_color": "black",
@@ -121,21 +122,20 @@ def _resolve_attack_key(vis_dict: Dict[str, torch.Tensor], attack_name: str) -> 
     raise KeyError(f"No image tensor found for attack {attack_name!r}.")
 
 
-def plot_magnified_noise_grid(vis_dict: dict, num_samples: int | None = None) -> Figure:
+def plot_magnified_noise_row(vis_dict: dict, sample_idx: int) -> Figure:
     clean_images = vis_dict["clean_images"]
     attacks = _available_attacks(vis_dict)
     if not attacks:
         raise KeyError("No adversarial image tensors found for the expected attack order.")
+    if sample_idx >= len(clean_images):
+        raise IndexError(f"sample_idx={sample_idx} is out of range for {len(clean_images)} clean images.")
 
-    requested_samples = num_samples or int(MAGNIFIED_NOISE_CONFIG["num_samples"])
-    sample_count = min(requested_samples, clean_images.shape[0])
     column_count = 1 + len(attacks)
-    base_width, base_height = MAGNIFIED_NOISE_CONFIG["figsize_per_sample"]
-    figure_size = (base_width, base_height * sample_count)
+    figure_size = MAGNIFIED_NOISE_CONFIG["figsize_per_sample"]
 
     plt.rcParams["font.family"] = MAGNIFIED_NOISE_CONFIG["font_family"]
     fig, axes = plt.subplots(
-        sample_count,
+        1,
         column_count,
         figsize=figure_size,
         dpi=MAGNIFIED_NOISE_CONFIG["figure_dpi"],
@@ -143,37 +143,29 @@ def plot_magnified_noise_grid(vis_dict: dict, num_samples: int | None = None) ->
     )
 
     magnification = float(MAGNIFIED_NOISE_CONFIG["noise_magnification"])
+    clean_img = clean_images[sample_idx]
+    row_images = [clean_img]
+    column_titles = ["Clean"]
 
-    for sample_idx in range(sample_count):
-        clean_img = clean_images[sample_idx]
-        row_images = [clean_img]
-        column_titles = ["Clean"]
+    for attack_name in attacks:
+        adv_img = vis_dict[_resolve_attack_key(vis_dict, attack_name)][sample_idx]
+        noise_vis = torch.clamp(clean_img + (adv_img - clean_img) * magnification, 0.0, 1.0)
+        row_images.append(noise_vis)
+        column_titles.append(attack_name)
 
-        for attack_name in attacks:
-            adv_img = vis_dict[_resolve_attack_key(vis_dict, attack_name)][sample_idx]
-            noise_vis = torch.clamp(clean_img + (adv_img - clean_img) * magnification, 0.0, 1.0)
-            row_images.append(noise_vis)
-            column_titles.append(attack_name)
-
-        for column_idx, image in enumerate(row_images):
-            ax = axes[sample_idx, column_idx]
-            ax.imshow(_to_image_array(image))
-            ax.set_xticks([])
-            ax.set_yticks([])
-            border_width = float(MAGNIFIED_NOISE_CONFIG["image_border_width"])
-            for spine in ax.spines.values():
-                spine.set_visible(border_width > 0)
-                spine.set_linewidth(border_width)
-                spine.set_edgecolor(MAGNIFIED_NOISE_CONFIG["image_border_color"])
-            if sample_idx == 0:
-                ax.set_title(
-                    column_titles[column_idx],
-                    fontsize=MAGNIFIED_NOISE_CONFIG["title_fontsize"],
-                )
-
-        axes[sample_idx, 0].set_ylabel(
-            f"Sample {sample_idx}",
-            fontsize=MAGNIFIED_NOISE_CONFIG["label_fontsize"],
+    for column_idx, image in enumerate(row_images):
+        ax = axes[0, column_idx]
+        ax.imshow(_to_image_array(image))
+        ax.set_xticks([])
+        ax.set_yticks([])
+        border_width = float(MAGNIFIED_NOISE_CONFIG["image_border_width"])
+        for spine in ax.spines.values():
+            spine.set_visible(border_width > 0)
+            spine.set_linewidth(border_width)
+            spine.set_edgecolor(MAGNIFIED_NOISE_CONFIG["image_border_color"])
+        ax.set_title(
+            column_titles[column_idx],
+            fontsize=MAGNIFIED_NOISE_CONFIG["title_fontsize"],
         )
 
     plt.tight_layout()

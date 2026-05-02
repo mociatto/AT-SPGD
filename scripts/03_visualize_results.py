@@ -28,9 +28,10 @@ from IPython.display import display
 from src.attacks.at_spgd import ATSPGD
 from src.models.split_models import EMB_DIM, FullVFLModel, ImageClient, VFLServer
 from src.visualization.plots import (
+    MAGNIFIED_NOISE_CONFIG,
     RADIAL_ENERGY_CONFIG,
     plot_gradcam_contours,
-    plot_magnified_noise_grid,
+    plot_magnified_noise_row,
     plot_pareto_frontier,
     plot_radial_energy,
 )
@@ -58,9 +59,24 @@ except TypeError:
 FIGURE_DIR = Path.cwd() / "results" / "figures"
 FIGURE_DIR.mkdir(parents=True, exist_ok=True)
 
-fig = plot_magnified_noise_grid(vis_dict)
-plt.show()
-fig.savefig(FIGURE_DIR / "03_magnified_noise.pdf", bbox_inches="tight")
+num_samples = int(MAGNIFIED_NOISE_CONFIG.get("num_samples", 5))
+
+for i in range(num_samples):
+    fig = plot_magnified_noise_row(vis_dict, sample_idx=i)
+
+    pdf_path = FIGURE_DIR / f"03_magnified_noise_sample_{i}.pdf"
+    fig.savefig(pdf_path, bbox_inches="tight", dpi=MAGNIFIED_NOISE_CONFIG.get("save_dpi", 300))
+
+    preview_path = FIGURE_DIR / f"03_magnified_noise_preview_{i}.png"
+    fig.savefig(preview_path, bbox_inches="tight", dpi=MAGNIFIED_NOISE_CONFIG.get("figure_dpi", 100))
+    display(
+        IPythonImage(
+            filename=str(preview_path),
+            width=MAGNIFIED_NOISE_CONFIG.get("display_width_px", 800),
+        )
+    )
+
+    plt.close(fig)
 
 # %%
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
