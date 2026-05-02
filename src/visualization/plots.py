@@ -111,7 +111,7 @@ PARETO_FRONTIER_CONFIG = {
     "suboptimal_size": 20,
     "optimal_color": "#FFBE0B",
     "optimal_marker": "o",
-    "optimal_linewidth": 1.5,
+    "optimal_linewidth": 1.0,
     "optimal_markersize": 6,
 }
 
