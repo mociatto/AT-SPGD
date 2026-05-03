@@ -153,41 +153,38 @@ if torch.cuda.is_available():
 # 3. RADIAL ENERGY PROFILES
 # ==========================================
 ENERGY_DATASETS = RADIAL_ENERGY_CONFIG["datasets"]
-ENERGY_CNN_MODEL = RADIAL_ENERGY_CONFIG["cnn_model"]
-ENERGY_TRANSFORMER_MODEL = RADIAL_ENERGY_CONFIG["transformer_model"]
-ENERGY_PANEL_LABELS = RADIAL_ENERGY_CONFIG["panel_labels"]
+ENERGY_MODEL_PAIRS = RADIAL_ENERGY_CONFIG["model_pairs"]
+ENERGY_MODEL_LABELS = RADIAL_ENERGY_CONFIG["model_labels"]
+ENERGY_DATASET_LABELS = RADIAL_ENERGY_CONFIG["dataset_labels"]
+ENERGY_SAMPLES = int(RADIAL_ENERGY_CONFIG.get("samples_per_case", 16))
 
-energy_panels = {ENERGY_PANEL_LABELS["cnn"]: [], ENERGY_PANEL_LABELS["transformer"]: []}
-print("Generating artifacts for Radial Energy calculation (16 samples per model/dataset)...")
+
+def radial_panel_label(dataset_name: str, model_name: str) -> str:
+    model_label = ENERGY_MODEL_LABELS.get(model_name, model_name)
+    dataset_label = ENERGY_DATASET_LABELS.get(dataset_name, dataset_name.upper())
+    return f"{model_label} | {dataset_label}"
+
+
+print(f"Generating Radial Energy rows ({ENERGY_SAMPLES} samples per model/dataset)...")
 
 for dataset_name in ENERGY_DATASETS:
-    energy_panels[ENERGY_PANEL_LABELS["cnn"]].append(
-        generate_artifacts(dataset_name, ENERGY_CNN_MODEL, num_samples=16)
-    )
-    energy_panels[ENERGY_PANEL_LABELS["transformer"]].append(
-        generate_artifacts(dataset_name, ENERGY_TRANSFORMER_MODEL, num_samples=16)
-    )
-
-fig_energy = plot_average_radial_energy_comparison(energy_panels)
-fig_energy.savefig(
-    FIGURE_DIR / "03_radial_energy.pdf",
-    bbox_inches="tight",
-    dpi=RADIAL_ENERGY_CONFIG.get("save_dpi", 300),
-)
-display_preview(fig_energy, RADIAL_ENERGY_CONFIG)
-plt.close(fig_energy)
-
-for panel_key, panel_label, model_name in [
-    ("cnn", ENERGY_PANEL_LABELS["cnn"], ENERGY_CNN_MODEL),
-    ("transformer", ENERGY_PANEL_LABELS["transformer"], ENERGY_TRANSFORMER_MODEL),
-]:
-    fig_panel = plot_average_radial_energy_panel(energy_panels[panel_label], panel_label=panel_label)
-    fig_panel.savefig(
-        FIGURE_DIR / f"03_radial_energy_{panel_key}_{model_name}.pdf",
-        bbox_inches="tight",
-        dpi=RADIAL_ENERGY_CONFIG.get("save_dpi", 300),
-    )
-    plt.close(fig_panel)
+    for row_idx, (cnn_model, transformer_model) in enumerate(ENERGY_MODEL_PAIRS, start=1):
+        row_panels = {
+            radial_panel_label(dataset_name, cnn_model): [
+                generate_artifacts(dataset_name, cnn_model, num_samples=ENERGY_SAMPLES)
+            ],
+            radial_panel_label(dataset_name, transformer_model): [
+                generate_artifacts(dataset_name, transformer_model, num_samples=ENERGY_SAMPLES)
+            ],
+        }
+        fig_energy = plot_average_radial_energy_comparison(row_panels)
+        fig_energy.savefig(
+            FIGURE_DIR / f"03_radial_energy_{dataset_name}_row_{row_idx}_{cnn_model}_{transformer_model}.pdf",
+            bbox_inches="tight",
+            dpi=RADIAL_ENERGY_CONFIG.get("save_dpi", 300),
+        )
+        display_preview(fig_energy, RADIAL_ENERGY_CONFIG)
+        plt.close(fig_energy)
 
 
 # %%

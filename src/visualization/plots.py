@@ -59,6 +59,8 @@ GRADCAM_CONTOUR_CONFIG = {
 RADIAL_ENERGY_CONFIG = {
     "font_family": "serif",
     "axes_label_fontsize": 10,
+    "title_fontsize": 10,
+    "title_pad": 8,
     "tick_label_fontsize": 10,
     "legend_fontsize": 8,
     "legend_loc": "upper right",
@@ -71,6 +73,23 @@ RADIAL_ENERGY_CONFIG = {
     "cnn_model": "resnet18",
     "transformer_model": "swin_tiny_patch4_window7_224",
     "panel_labels": {"cnn": "CNN", "transformer": "Transformer"},
+    "model_pairs": [
+        ("resnet18", "swin_tiny_patch4_window7_224"),
+        ("mobilenet_v2", "vit_base_patch16_224"),
+    ],
+    "model_labels": {
+        "resnet18": "ResNet-18",
+        "mobilenet_v2": "MobileNetV2",
+        "swin_tiny_patch4_window7_224": "Swin-Tiny",
+        "vit_base_patch16_224": "ViT-B/16",
+    },
+    "dataset_labels": {
+        "cifar10": "CIFAR-10",
+        "cifar100": "CIFAR-100",
+        "svhn": "SVHN",
+        "gtsrb": "GTSRB",
+    },
+    "samples_per_case": 16,
     "line_width": 1.0,
     "smooth_window": 3,
     "fill_alpha": 0.0,
@@ -427,14 +446,10 @@ def _draw_average_radial_energy_panel(ax, averaged_profiles: Dict[str, np.ndarra
         fontsize=RADIAL_ENERGY_CONFIG["axes_label_fontsize"],
     )
     if panel_label is not None:
-        ax.text(
-            0.02,
-            0.96,
+        ax.set_title(
             panel_label,
-            transform=ax.transAxes,
-            ha="left",
-            va="top",
-            fontsize=RADIAL_ENERGY_CONFIG["axes_label_fontsize"],
+            fontsize=RADIAL_ENERGY_CONFIG["title_fontsize"],
+            pad=RADIAL_ENERGY_CONFIG["title_pad"],
         )
     ax.tick_params(axis="both", labelsize=RADIAL_ENERGY_CONFIG["tick_label_fontsize"])
     ax.legend(
