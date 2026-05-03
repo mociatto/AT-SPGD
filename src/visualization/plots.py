@@ -111,7 +111,7 @@ PARETO_FRONTIER_CONFIG = {
     "suboptimal_size": 20,
     "optimal_color": "#3A86FF",
     "optimal_marker": "o",
-    "optimal_linewidth": 0.0,
+    "optimal_linewidth": 1.0,
     "optimal_markersize": 6,
     "annotation_x_offset": 8,
     "annotation_y_offsets": [0, 5, -5, 10, -10, 15, -15, 20, -20],
@@ -690,16 +690,22 @@ def plot_jpeg_compression_comparison(dataset_curves: Dict[str, Dict[str, list[fl
     plt.rcParams["font.family"] = JPEG_COMPRESSION_CONFIG["font_family"]
     scale = float(JPEG_COMPRESSION_CONFIG["figsize_scale"])
     width, height = JPEG_COMPRESSION_CONFIG["figsize"]
+    column_count = 2
+    row_count = (len(dataset_curves) + column_count - 1) // column_count
     fig, axes = plt.subplots(
-        1,
-        len(dataset_curves),
-        figsize=(width * len(dataset_curves) * scale, height * scale),
+        row_count,
+        column_count,
+        figsize=(width * column_count * scale, height * row_count * scale),
         dpi=JPEG_COMPRESSION_CONFIG["figure_dpi"],
         squeeze=False,
     )
 
-    for ax, (dataset_name, model_curves) in zip(axes[0], dataset_curves.items()):
+    flat_axes = axes.ravel()
+    for ax, (dataset_name, model_curves) in zip(flat_axes, dataset_curves.items()):
         _draw_jpeg_compression_panel(ax, dataset_name, model_curves)
+
+    for ax in flat_axes[len(dataset_curves) :]:
+        ax.axis("off")
 
     plt.tight_layout()
     return fig

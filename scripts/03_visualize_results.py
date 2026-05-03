@@ -12,9 +12,9 @@ from __future__ import annotations
 
 # %%
 import io
-from pathlib import Path
 import sys
-
+from pathlib import Path
+from typing import Tuple
 
 PROJECT_ROOT = Path.cwd()
 if str(PROJECT_ROOT) not in sys.path:
@@ -24,11 +24,15 @@ if str(PROJECT_ROOT) not in sys.path:
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torchattacks
 from IPython.display import Image as IPythonImage
 from IPython.display import display
+from matplotlib.figure import Figure
 from PIL import Image
 
 from src.attacks.at_spgd import ATSPGD
+from src.attacks.ssa import SSA
+from src.data.datasets import IMAGENET_MEAN, IMAGENET_STD, get_dataloaders
 from src.models.split_models import EMB_DIM, FullVFLModel, ImageClient, VFLServer
 from src.visualization.plots import (
     GRADCAM_CONTOUR_CONFIG,
@@ -46,11 +50,21 @@ from src.visualization.plots import (
     plot_pareto_frontier_panel,
 )
 
-LEGACY_KAGGLE_PATH = "/kaggle/input/notebooks/mostafaanoosha/at-spgd-02-attack"
+# ==========================================
+# 1. CORE SETUP & DYNAMIC ARTIFACT GENERATOR
+# ==========================================
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 CHECKPOINT_DIR = Path("/kaggle/input/notebooks/mostafaanoosha/at-spgd-01-training/AT-SPGD/checkpoints")
-VIS_DATASET = "gtsrb"
-VIS_MODEL = "resnet18"
-ARTIFACT_PATH = Path(LEGACY_KAGGLE_PATH) / f"vis_artifacts_{VIS_DATASET}_{VIS_MODEL}.pt"
+FIGURE_DIR = Path.cwd() / "results" / "figures"
+FIGURE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _denormalize(images: torch.Tensor) -> torch.Tensor:
+    if float(images.min()) >= 0.0 and float(images.max()) <= 1.0:
+        return images.clamp(0.0, 1.0)
+    mean = torch.tensor(IMAGENET_MEAN, dtype=images.dtype, device=images.device).view(1, 3, 1, 1)
+    std = torch.tensor(IMAGENET_STD, dtype=images.dtype, device=images.device).view(1, 3, 1, 1)
+    return (images * std + mean).clamp(0.0, 1.0)
 
 
 def load_checkpoint(path: Path) -> dict:
@@ -60,110 +74,117 @@ def load_checkpoint(path: Path) -> dict:
         return torch.load(path, map_location="cpu")
 
 
-try:
-    vis_dict = torch.load(ARTIFACT_PATH, map_location="cpu", weights_only=False)
-except TypeError:
-    vis_dict = torch.load(ARTIFACT_PATH, map_location="cpu")
+def build_vfl_model(dataset_name: str, model_name: str) -> FullVFLModel:
+    checkpoint = load_checkpoint(CHECKPOINT_DIR / f"01_baseline_{dataset_name}_{model_name}.pth")
+    num_classes = int(checkpoint["num_classes"])
+    client = ImageClient(model_name=model_name, dim=EMB_DIM)
+    server = VFLServer(emb_dim=EMB_DIM, num_classes=num_classes)
+    client.load_state_dict(checkpoint["image_client"])
+    server.load_state_dict(checkpoint["vfl_server"])
+    return FullVFLModel(client, server, normalize_inputs=True).eval().to(device)
 
-# %%
-FIGURE_DIR = Path.cwd() / "results" / "figures"
-FIGURE_DIR.mkdir(parents=True, exist_ok=True)
 
-num_samples = int(MAGNIFIED_NOISE_CONFIG.get("num_samples", 5))
+@torch.no_grad()
+def get_clean_batch(dataset_name: str, num_samples: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    _, test_loader, _ = get_dataloaders(dataset_name=dataset_name, batch_size=num_samples, num_workers=2)
+    images, labels = next(iter(test_loader))
+    return _denormalize(images[:num_samples]), labels[:num_samples]
 
-for i in range(num_samples):
-    fig = plot_magnified_noise_row(vis_dict, sample_idx=i)
 
-    pdf_path = FIGURE_DIR / f"03_magnified_noise_sample_{i}.pdf"
-    fig.savefig(pdf_path, bbox_inches="tight", dpi=MAGNIFIED_NOISE_CONFIG.get("save_dpi", 300))
+def generate_artifacts(dataset_name: str, model_name: str, num_samples: int) -> dict:
+    model = build_vfl_model(dataset_name, model_name)
+    images, labels = get_clean_batch(dataset_name, num_samples)
+    images, labels = images.to(device), labels.to(device)
 
+    eps, alpha, steps = 8.0 / 255.0, 2.0 / 255.0, 10
+    attacks = {
+        "PGD": torchattacks.PGD(model, eps=eps, alpha=alpha, steps=steps),
+        "APGD": torchattacks.APGD(model, eps=eps, steps=steps),
+        "MIFGSM": torchattacks.MIFGSM(model, eps=eps, steps=steps),
+        "SSA": SSA(model, eps=eps, alpha=alpha, steps=steps),
+        "AT-SPGD": ATSPGD(model, eps=eps, alpha_f=alpha, alpha_x=alpha, steps=steps, K=0.1),
+    }
+
+    vis_dict = {"clean_images": images.cpu(), "labels": labels.cpu()}
+    for attack_name, attack in attacks.items():
+        vis_dict[f"adv_{attack_name}"] = attack(images, labels).cpu()
+
+    del model, images, labels
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return vis_dict
+
+
+def display_preview(fig: Figure, config: dict) -> None:
     preview_buffer = io.BytesIO()
-    fig.savefig(preview_buffer, format="png", bbox_inches="tight", dpi=MAGNIFIED_NOISE_CONFIG.get("figure_dpi", 100))
+    fig.savefig(preview_buffer, format="png", bbox_inches="tight", dpi=config.get("figure_dpi", 100))
     preview_buffer.seek(0)
-    display(
-        IPythonImage(
-            data=preview_buffer.getvalue(),
-            width=MAGNIFIED_NOISE_CONFIG.get("display_width_px", 800),
-        )
-    )
+    display(IPythonImage(data=preview_buffer.getvalue(), width=config.get("display_width_px", 800)))
 
-    plt.close(fig)
 
 # %%
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-checkpoint = load_checkpoint(CHECKPOINT_DIR / f"01_baseline_{VIS_DATASET}_{VIS_MODEL}.pth")
-num_classes = int(checkpoint["num_classes"])
+# ==========================================
+# 2. NOISE MAGNIFICATION & GRAD-CAM
+# ==========================================
+VIS_DATASET = "gtsrb"
+VIS_MODEL = "resnet18"
+NUM_VIS_SAMPLES = int(MAGNIFIED_NOISE_CONFIG.get("num_samples", 5))
 
-client = ImageClient(model_name=VIS_MODEL, dim=EMB_DIM)
-server = VFLServer(emb_dim=EMB_DIM, num_classes=num_classes)
-client.load_state_dict(checkpoint["image_client"])
-server.load_state_dict(checkpoint["vfl_server"])
-full_model = FullVFLModel(client, server, normalize_inputs=True).eval().to(device)
+print(f"Generating visual artifacts for {VIS_DATASET} / {VIS_MODEL}...")
+vis_dict = generate_artifacts(VIS_DATASET, VIS_MODEL, NUM_VIS_SAMPLES)
+full_model = build_vfl_model(VIS_DATASET, VIS_MODEL)
 
-num_gradcam_samples = int(GRADCAM_CONTOUR_CONFIG.get("num_samples", 5))
+for i in range(NUM_VIS_SAMPLES):
+    fig_noise = plot_magnified_noise_row(vis_dict, sample_idx=i)
+    fig_noise.savefig(
+        FIGURE_DIR / f"03_magnified_noise_sample_{i}.pdf",
+        bbox_inches="tight",
+        dpi=MAGNIFIED_NOISE_CONFIG.get("save_dpi", 300),
+    )
+    display_preview(fig_noise, MAGNIFIED_NOISE_CONFIG)
+    plt.close(fig_noise)
 
-for i in range(num_gradcam_samples):
     fig_cam = plot_gradcam_contour_row(full_model, VIS_MODEL, vis_dict, sample_idx=i)
-
-    pdf_path = FIGURE_DIR / f"03_gradcam_contours_sample_{i}.pdf"
-    fig_cam.savefig(pdf_path, bbox_inches="tight", dpi=GRADCAM_CONTOUR_CONFIG.get("save_dpi", 300))
-
-    preview_buffer = io.BytesIO()
-    fig_cam.savefig(preview_buffer, format="png", bbox_inches="tight", dpi=GRADCAM_CONTOUR_CONFIG.get("figure_dpi", 100))
-    preview_buffer.seek(0)
-    display(
-        IPythonImage(
-            data=preview_buffer.getvalue(),
-            width=GRADCAM_CONTOUR_CONFIG.get("display_width_px", 800),
-        )
+    fig_cam.savefig(
+        FIGURE_DIR / f"03_gradcam_contours_sample_{i}.pdf",
+        bbox_inches="tight",
+        dpi=GRADCAM_CONTOUR_CONFIG.get("save_dpi", 300),
     )
-
+    display_preview(fig_cam, GRADCAM_CONTOUR_CONFIG)
     plt.close(fig_cam)
 
+del full_model
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
+
+
 # %%
+# ==========================================
+# 3. RADIAL ENERGY PROFILES
+# ==========================================
 ENERGY_DATASETS = RADIAL_ENERGY_CONFIG["datasets"]
 ENERGY_CNN_MODEL = RADIAL_ENERGY_CONFIG["cnn_model"]
 ENERGY_TRANSFORMER_MODEL = RADIAL_ENERGY_CONFIG["transformer_model"]
 ENERGY_PANEL_LABELS = RADIAL_ENERGY_CONFIG["panel_labels"]
 
+energy_panels = {ENERGY_PANEL_LABELS["cnn"]: [], ENERGY_PANEL_LABELS["transformer"]: []}
+print("Generating artifacts for Radial Energy calculation (16 samples per model/dataset)...")
 
-def load_energy_artifacts(model_name: str) -> list[dict]:
-    artifacts = []
-    for dataset_name in ENERGY_DATASETS:
-        artifact_path = Path(LEGACY_KAGGLE_PATH) / f"vis_artifacts_{dataset_name}_{model_name}.pt"
-        try:
-            artifact = torch.load(artifact_path, map_location="cpu", weights_only=False)
-        except TypeError:
-            artifact = torch.load(artifact_path, map_location="cpu")
-        artifacts.append(artifact)
-    return artifacts
-
-
-energy_panels = {
-    ENERGY_PANEL_LABELS["cnn"]: load_energy_artifacts(ENERGY_CNN_MODEL),
-    ENERGY_PANEL_LABELS["transformer"]: load_energy_artifacts(ENERGY_TRANSFORMER_MODEL),
-}
+for dataset_name in ENERGY_DATASETS:
+    energy_panels[ENERGY_PANEL_LABELS["cnn"]].append(
+        generate_artifacts(dataset_name, ENERGY_CNN_MODEL, num_samples=16)
+    )
+    energy_panels[ENERGY_PANEL_LABELS["transformer"]].append(
+        generate_artifacts(dataset_name, ENERGY_TRANSFORMER_MODEL, num_samples=16)
+    )
 
 fig_energy = plot_average_radial_energy_comparison(energy_panels)
-radial_preview_buffer = io.BytesIO()
-fig_energy.savefig(
-    radial_preview_buffer,
-    format="png",
-    bbox_inches="tight",
-    dpi=RADIAL_ENERGY_CONFIG.get("figure_dpi", 100),
-)
-radial_preview_buffer.seek(0)
-display(
-    IPythonImage(
-        data=radial_preview_buffer.getvalue(),
-        width=RADIAL_ENERGY_CONFIG.get("display_width_px", 520),
-    )
-)
 fig_energy.savefig(
     FIGURE_DIR / "03_radial_energy.pdf",
     bbox_inches="tight",
     dpi=RADIAL_ENERGY_CONFIG.get("save_dpi", 300),
 )
+display_preview(fig_energy, RADIAL_ENERGY_CONFIG)
 plt.close(fig_energy)
 
 for panel_key, panel_label, model_name in [
@@ -178,7 +199,11 @@ for panel_key, panel_label, model_name in [
     )
     plt.close(fig_panel)
 
+
 # %%
+# ==========================================
+# 4. PARETO FRONTIER
+# ==========================================
 PARETO_SAMPLES = 64
 PARETO_PANEL_LABELS = PARETO_FRONTIER_CONFIG["panel_labels"]
 PARETO_CASES = {
@@ -195,29 +220,11 @@ PARETO_CASES = {
 }
 
 
-def build_vfl_model(dataset_name: str, model_name: str, device: torch.device) -> FullVFLModel:
-    checkpoint = load_checkpoint(CHECKPOINT_DIR / f"01_baseline_{dataset_name}_{model_name}.pth")
-    num_classes = int(checkpoint["num_classes"])
-    client = ImageClient(model_name=model_name, dim=EMB_DIM)
-    server = VFLServer(emb_dim=EMB_DIM, num_classes=num_classes)
-    client.load_state_dict(checkpoint["image_client"])
-    server.load_state_dict(checkpoint["vfl_server"])
-    return FullVFLModel(client, server, normalize_inputs=True).eval().to(device)
-
-
-def load_visual_artifact(dataset_name: str, model_name: str) -> dict:
-    artifact_path = Path(LEGACY_KAGGLE_PATH) / f"vis_artifacts_{dataset_name}_{model_name}.pt"
-    try:
-        return torch.load(artifact_path, map_location="cpu", weights_only=False)
-    except TypeError:
-        return torch.load(artifact_path, map_location="cpu")
-
-
-def run_pareto_sweep(dataset_name: str, model_name: str, device: torch.device) -> list[dict]:
-    model = build_vfl_model(dataset_name, model_name, device)
-    artifact = load_visual_artifact(dataset_name, model_name)
-    images = artifact["clean_images"][:PARETO_SAMPLES].to(device)
-    labels = artifact["labels"][:PARETO_SAMPLES].to(device)
+def run_pareto_sweep(dataset_name: str, model_name: str) -> list[dict]:
+    print(f"Running Pareto Grid Search for {dataset_name} / {model_name}...")
+    model = build_vfl_model(dataset_name, model_name)
+    images, labels = get_clean_batch(dataset_name, PARETO_SAMPLES)
+    images, labels = images.to(device), labels.to(device)
 
     results = []
     epsilon = float(PARETO_FRONTIER_CONFIG["epsilon"])
@@ -239,75 +246,48 @@ def run_pareto_sweep(dataset_name: str, model_name: str, device: torch.device) -
                     mse = torch.mean((adversarial - images) ** 2, dim=[1, 2, 3])
                     psnr = (20 * torch.log10(1.0 / torch.sqrt(mse))).mean().item()
 
-                results.append(
-                    {
-                        "k": k,
-                        "alpha": alpha_multiplier,
-                        "steps": steps,
-                        "asr": asr,
-                        "psnr": psnr,
-                    }
-                )
-
+                results.append({"k": k, "alpha": alpha_multiplier, "steps": steps, "asr": asr, "psnr": psnr})
                 del attack, adversarial, logits
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
 
-    del model, artifact, images, labels
+    del model, images, labels
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     return results
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 pareto_results = {
-    panel_label: run_pareto_sweep(case["dataset"], case["model"], device)
-    for panel_label, case in PARETO_CASES.items()
+    panel_label: run_pareto_sweep(case["dataset"], case["model"]) for panel_label, case in PARETO_CASES.items()
 }
 
 fig_pareto = plot_pareto_frontier_comparison(pareto_results)
-pareto_preview_buffer = io.BytesIO()
 fig_pareto.savefig(
-    pareto_preview_buffer,
-    format="png",
+    FIGURE_DIR / "03_pareto_frontier.pdf",
     bbox_inches="tight",
-    dpi=PARETO_FRONTIER_CONFIG.get("figure_dpi", 100),
+    dpi=PARETO_FRONTIER_CONFIG.get("save_dpi", 300),
 )
-pareto_preview_buffer.seek(0)
-display(
-    IPythonImage(
-        data=pareto_preview_buffer.getvalue(),
-        width=PARETO_FRONTIER_CONFIG.get("display_width_px", 800),
-    )
-)
+display_preview(fig_pareto, PARETO_FRONTIER_CONFIG)
 plt.close(fig_pareto)
 
 for panel_label, case in PARETO_CASES.items():
-    panel_key = case["panel_key"]
-    model_name = case["model"]
     fig_panel = plot_pareto_frontier_panel(pareto_results[panel_label], panel_label=panel_label)
     fig_panel.savefig(
-        FIGURE_DIR / f"03_pareto_frontier_{panel_key}_{model_name}.pdf",
+        FIGURE_DIR / f"03_pareto_frontier_{case['panel_key']}_{case['model']}.pdf",
         bbox_inches="tight",
         dpi=PARETO_FRONTIER_CONFIG.get("save_dpi", 300),
     )
     plt.close(fig_panel)
 
+
 # %%
+# ==========================================
+# 5. JPEG COMPRESSION
+# ==========================================
 JPEG_DATASETS = JPEG_COMPRESSION_CONFIG["datasets"]
 JPEG_MODELS = JPEG_COMPRESSION_CONFIG["models"]
 JPEG_QUALITIES = JPEG_COMPRESSION_CONFIG["jpeg_qualities"]
-JPEG_ATTACK_KEYS = ("adv_AT-SPGD", "adv_ATSPGD", "adv_Adaptive")
 
 
-def get_ours_attack_images(artifact: dict) -> torch.Tensor:
-    for attack_key in JPEG_ATTACK_KEYS:
-        if attack_key in artifact:
-            return artifact[attack_key]
-    raise KeyError(f"No AT-SPGD adversarial tensor found. Tried: {JPEG_ATTACK_KEYS}")
-
-
-def apply_jpeg_batch(images: torch.Tensor, quality: int, device: torch.device) -> torch.Tensor:
+def apply_jpeg_batch(images: torch.Tensor, quality: int) -> torch.Tensor:
     compressed_images = []
     for image in images:
         image_np = (image.detach().cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
@@ -320,24 +300,26 @@ def apply_jpeg_batch(images: torch.Tensor, quality: int, device: torch.device) -
     return torch.stack(compressed_images).to(device)
 
 
-def compute_jpeg_asr_curve(dataset_name: str, model_name: str, device: torch.device) -> list[float]:
-    model = build_vfl_model(dataset_name, model_name, device)
-    artifact = load_visual_artifact(dataset_name, model_name)
-    adversarial_images = get_ours_attack_images(artifact)
-    sample_count = min(adversarial_images.shape[0], artifact["labels"].shape[0])
-    adversarial_images = adversarial_images[:sample_count]
-    labels = artifact["labels"][:sample_count].to(device)
+def compute_jpeg_asr_curve(dataset_name: str, model_name: str) -> list[float]:
+    print(f"Running JPEG Compression for {dataset_name} / {model_name}...")
+    model = build_vfl_model(dataset_name, model_name)
+    artifact = generate_artifacts(dataset_name, model_name, num_samples=32)
+
+    attack_key = next((key for key in ("adv_AT-SPGD", "adv_ATSPGD", "adv_Adaptive") if key in artifact), None)
+    if attack_key is None:
+        raise KeyError("No AT-SPGD adversarial tensor found in generated artifact.")
+
+    adversarial_images = artifact[attack_key].to(device)
+    labels = artifact["labels"].to(device)
 
     asr_curve = []
     for quality in JPEG_QUALITIES:
-        compressed = apply_jpeg_batch(adversarial_images, quality, device)
+        compressed = apply_jpeg_batch(adversarial_images, quality)
         with torch.no_grad():
             logits = model(compressed)
             asr = (logits.argmax(dim=1) != labels).float().mean().item() * 100.0
         asr_curve.append(asr)
         del compressed, logits
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
 
     del model, artifact, adversarial_images, labels
     if torch.cuda.is_available():
@@ -345,30 +327,18 @@ def compute_jpeg_asr_curve(dataset_name: str, model_name: str, device: torch.dev
     return asr_curve
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 jpeg_curves = {
-    dataset_name: {
-        model_name: compute_jpeg_asr_curve(dataset_name, model_name, device)
-        for model_name in JPEG_MODELS
-    }
+    dataset_name: {model_name: compute_jpeg_asr_curve(dataset_name, model_name) for model_name in JPEG_MODELS}
     for dataset_name in JPEG_DATASETS
 }
 
 fig_jpeg = plot_jpeg_compression_comparison(jpeg_curves)
-jpeg_preview_buffer = io.BytesIO()
 fig_jpeg.savefig(
-    jpeg_preview_buffer,
-    format="png",
+    FIGURE_DIR / "03_jpeg_compression.pdf",
     bbox_inches="tight",
-    dpi=JPEG_COMPRESSION_CONFIG.get("figure_dpi", 100),
+    dpi=JPEG_COMPRESSION_CONFIG.get("save_dpi", 300),
 )
-jpeg_preview_buffer.seek(0)
-display(
-    IPythonImage(
-        data=jpeg_preview_buffer.getvalue(),
-        width=JPEG_COMPRESSION_CONFIG.get("display_width_px", 800),
-    )
-)
+display_preview(fig_jpeg, {**JPEG_COMPRESSION_CONFIG, "display_width_px": 1280})
 plt.close(fig_jpeg)
 
 for dataset_name, model_curves in jpeg_curves.items():
