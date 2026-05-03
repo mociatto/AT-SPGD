@@ -1004,3 +1004,106 @@ def plot_gradcam_contour_row(
 
     plt.tight_layout()
     return fig
+
+
+def plot_noise_gradcam_sample(
+    full_model: nn.Module,
+    model_name: str,
+    vis_dict: dict,
+    sample_idx: int,
+) -> Figure:
+    clean_images = vis_dict["clean_images"]
+    labels = vis_dict["labels"]
+    attacks = _available_attacks(vis_dict)
+    if not attacks:
+        raise KeyError("No adversarial image tensors found for the expected attack order.")
+
+    attack_keys = [_resolve_attack_key(vis_dict, attack_name) for attack_name in attacks]
+    max_samples = min(clean_images.shape[0], labels.shape[0], *[vis_dict[key].shape[0] for key in attack_keys])
+    if sample_idx >= max_samples:
+        raise IndexError(f"sample_idx={sample_idx} is out of range for {max_samples} visualization samples.")
+
+    column_count = 1 + len(attacks)
+    noise_width, noise_height = MAGNIFIED_NOISE_CONFIG["figsize_per_sample"]
+    _, cam_height = GRADCAM_CONTOUR_CONFIG["figsize_per_sample"]
+    device = next(full_model.parameters()).device
+    target_layer = _resolve_gradcam_target_layer(full_model, model_name)
+    cmap = LinearSegmentedColormap.from_list(
+        "custom_cam",
+        [
+            GRADCAM_CONTOUR_CONFIG["contour_color_low"],
+            GRADCAM_CONTOUR_CONFIG["contour_color_midlow"],
+            GRADCAM_CONTOUR_CONFIG["contour_color_mid"],
+            GRADCAM_CONTOUR_CONFIG["contour_color_midhigh"],
+            GRADCAM_CONTOUR_CONFIG["contour_color_high"],
+        ],
+    )
+    contour_levels = np.linspace(
+        float(GRADCAM_CONTOUR_CONFIG["contour_min_level"]),
+        float(GRADCAM_CONTOUR_CONFIG["contour_max_level"]),
+        int(GRADCAM_CONTOUR_CONFIG["contour_levels"]),
+    )
+
+    plt.rcParams["font.family"] = MAGNIFIED_NOISE_CONFIG["font_family"]
+    fig, axes = plt.subplots(
+        2,
+        column_count,
+        figsize=(noise_width, noise_height + cam_height),
+        dpi=int(MAGNIFIED_NOISE_CONFIG["figure_dpi"]),
+        squeeze=False,
+    )
+
+    clean_img = clean_images[sample_idx]
+    magnification = float(MAGNIFIED_NOISE_CONFIG["noise_magnification"])
+    row_images = [clean_img]
+    column_titles = ["Clean"]
+
+    for attack_name in attacks:
+        adv_img = vis_dict[_resolve_attack_key(vis_dict, attack_name)][sample_idx]
+        noise_vis = torch.clamp(clean_img + (adv_img - clean_img) * magnification, 0.0, 1.0)
+        row_images.append(noise_vis)
+        column_titles.append(attack_name)
+
+    for column_idx, image in enumerate(row_images):
+        ax = axes[0, column_idx]
+        ax.imshow(_to_image_array(image))
+        ax.set_xticks([])
+        ax.set_yticks([])
+        border_width = float(MAGNIFIED_NOISE_CONFIG["image_border_width"])
+        for spine in ax.spines.values():
+            spine.set_visible(border_width > 0)
+            spine.set_linewidth(border_width)
+            spine.set_edgecolor(MAGNIFIED_NOISE_CONFIG["image_border_color"])
+        ax.set_title(column_titles[column_idx], fontsize=MAGNIFIED_NOISE_CONFIG["title_fontsize"])
+
+    label = labels[sample_idx].to(device)
+    gradcam_images = [clean_img]
+    gradcam_images.extend(vis_dict[_resolve_attack_key(vis_dict, attack_name)][sample_idx] for attack_name in attacks)
+
+    for column_idx, image in enumerate(gradcam_images):
+        ax = axes[1, column_idx]
+        image = image.to(device)
+        cam_map = _compute_gradcam_contour_map(full_model, target_layer, image, label)
+        cam_np = cam_map.numpy()
+        smooth_sigma = float(GRADCAM_CONTOUR_CONFIG["contour_smooth_sigma"])
+        if smooth_sigma > 0:
+            cam_np = gaussian_filter(cam_np, sigma=smooth_sigma)
+
+        ax.imshow(_to_image_array(image), alpha=float(GRADCAM_CONTOUR_CONFIG["back_image_alpha"]))
+        ax.contour(
+            cam_np,
+            levels=contour_levels,
+            cmap=cmap,
+            linewidths=float(GRADCAM_CONTOUR_CONFIG["contour_linewidth"]),
+            alpha=float(GRADCAM_CONTOUR_CONFIG["contour_alpha"]),
+        )
+        ax.set_xticks([])
+        ax.set_yticks([])
+        border_width = float(GRADCAM_CONTOUR_CONFIG["image_border_width"])
+        for spine in ax.spines.values():
+            spine.set_visible(border_width > 0)
+            spine.set_linewidth(border_width)
+            spine.set_edgecolor(GRADCAM_CONTOUR_CONFIG["image_border_color"])
+
+    plt.tight_layout()
+    return fig

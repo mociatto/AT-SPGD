@@ -42,10 +42,9 @@ from src.visualization.plots import (
     RADIAL_ENERGY_CONFIG,
     plot_average_radial_energy_comparison,
     plot_average_radial_energy_panel,
-    plot_gradcam_contour_row,
     plot_jpeg_compression_comparison,
     plot_jpeg_compression_panel,
-    plot_magnified_noise_row,
+    plot_noise_gradcam_sample,
     plot_pareto_frontier_comparison,
     plot_pareto_frontier_panel,
 )
@@ -135,23 +134,14 @@ vis_dict = generate_artifacts(VIS_DATASET, VIS_MODEL, NUM_VIS_SAMPLES)
 full_model = build_vfl_model(VIS_DATASET, VIS_MODEL)
 
 for i in range(NUM_VIS_SAMPLES):
-    fig_noise = plot_magnified_noise_row(vis_dict, sample_idx=i)
-    fig_noise.savefig(
-        FIGURE_DIR / f"03_magnified_noise_sample_{i}.pdf",
+    fig_sample = plot_noise_gradcam_sample(full_model, VIS_MODEL, vis_dict, sample_idx=i)
+    fig_sample.savefig(
+        FIGURE_DIR / f"03_noise_gradcam_sample_{i}.pdf",
         bbox_inches="tight",
-        dpi=MAGNIFIED_NOISE_CONFIG.get("save_dpi", 300),
+        dpi=max(MAGNIFIED_NOISE_CONFIG.get("save_dpi", 300), GRADCAM_CONTOUR_CONFIG.get("save_dpi", 300)),
     )
-    display_preview(fig_noise, MAGNIFIED_NOISE_CONFIG)
-    plt.close(fig_noise)
-
-    fig_cam = plot_gradcam_contour_row(full_model, VIS_MODEL, vis_dict, sample_idx=i)
-    fig_cam.savefig(
-        FIGURE_DIR / f"03_gradcam_contours_sample_{i}.pdf",
-        bbox_inches="tight",
-        dpi=GRADCAM_CONTOUR_CONFIG.get("save_dpi", 300),
-    )
-    display_preview(fig_cam, GRADCAM_CONTOUR_CONFIG)
-    plt.close(fig_cam)
+    display_preview(fig_sample, MAGNIFIED_NOISE_CONFIG)
+    plt.close(fig_sample)
 
 del full_model
 if torch.cuda.is_available():
@@ -338,7 +328,7 @@ fig_jpeg.savefig(
     bbox_inches="tight",
     dpi=JPEG_COMPRESSION_CONFIG.get("save_dpi", 300),
 )
-display_preview(fig_jpeg, {**JPEG_COMPRESSION_CONFIG, "display_width_px": 1280})
+display_preview(fig_jpeg, {**JPEG_COMPRESSION_CONFIG, "display_width_px": 800})
 plt.close(fig_jpeg)
 
 for dataset_name, model_curves in jpeg_curves.items():
