@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.figure import Figure
+from matplotlib.patches import Patch
 from scipy.ndimage import gaussian_filter
 
 try:
@@ -176,6 +177,53 @@ JPEG_COMPRESSION_CONFIG = {
     "markersize": 6,
     "x_label": "JPEG Quality",
     "y_label": "Attack Success Rate",
+}
+
+GAUSSIAN_BLUR_CONFIG = {
+    "font_family": "serif",
+    "axes_label_fontsize": 10,
+    "title_fontsize": 11,
+    "title_pad": 8,
+    "tick_label_fontsize": 9,
+    "legend_fontsize": 8,
+    "legend_loc": "lower left",
+    "figure_dpi": 100,
+    "save_dpi": 300,
+    "figsize": (4.5, 3.5),
+    "figsize_scale": 1.0,
+    "display_width_px": 900,
+    "datasets": ["cifar10", "cifar100", "svhn", "gtsrb"],
+    "model_groups": {
+        "CNN Average": ["resnet18", "mobilenet_v2"],
+        "Transformer Average": ["swin_tiny_patch4_window7_224", "vit_base_patch16_224"],
+    },
+    "num_samples": 32,
+    "blur_kernel_size": 5,
+    "blur_sigma": 1.0,
+    "attack_order": ["PGD", "APGD", "MIFGSM", "SSA", "AT-SPGD (Ours)"],
+    "attack_labels": {
+        "PGD": "PGD",
+        "APGD": "APGD",
+        "MIFGSM": "MI-FGSM",
+        "SSA": "SSA",
+        "AT-SPGD (Ours)": "AT-SPGD",
+    },
+    "attack_colors": {
+        "PGD": "#FFBE0B",
+        "APGD": "#FB5607",
+        "MIFGSM": "#FF006E",
+        "SSA": "#8338EC",
+        "AT-SPGD (Ours)": "#3A86FF",
+    },
+    "no_defense_color": "#B8B8B8",
+    "no_defense_label": "No Defense",
+    "blur_label": "Gaussian Blur",
+    "no_defense_bar_width": 0.72,
+    "blur_bar_width": 0.46,
+    "bar_alpha": 1.0,
+    "x_label": "Attack Method",
+    "y_label": "Attack Success Rate (%)",
+    "y_limit": (0.0, 100.0),
 }
 
 ATTACK_ORDER = ["PGD", "APGD", "MIFGSM", "SSA", "AT-SPGD (Ours)"]
@@ -721,6 +769,91 @@ def plot_jpeg_compression_comparison(dataset_curves: Dict[str, Dict[str, list[fl
 
     for ax in flat_axes[len(dataset_curves) :]:
         ax.axis("off")
+
+    plt.tight_layout()
+    return fig
+
+
+def _draw_gaussian_blur_panel(ax, panel_title: str, attack_metrics: Dict[str, Dict[str, float]]) -> None:
+    attack_order = GAUSSIAN_BLUR_CONFIG["attack_order"]
+    attack_labels = GAUSSIAN_BLUR_CONFIG["attack_labels"]
+    attack_colors = GAUSSIAN_BLUR_CONFIG["attack_colors"]
+    x_positions = np.arange(len(attack_order))
+    no_defense_values = [attack_metrics[attack_name]["no_defense"] for attack_name in attack_order]
+    blur_values = [attack_metrics[attack_name]["gaussian_blur"] for attack_name in attack_order]
+
+    ax.bar(
+        x_positions,
+        no_defense_values,
+        width=float(GAUSSIAN_BLUR_CONFIG["no_defense_bar_width"]),
+        color=GAUSSIAN_BLUR_CONFIG["no_defense_color"],
+        alpha=float(GAUSSIAN_BLUR_CONFIG["bar_alpha"]),
+        zorder=1,
+    )
+    ax.bar(
+        x_positions,
+        blur_values,
+        width=float(GAUSSIAN_BLUR_CONFIG["blur_bar_width"]),
+        color=[attack_colors[attack_name] for attack_name in attack_order],
+        alpha=float(GAUSSIAN_BLUR_CONFIG["bar_alpha"]),
+        zorder=2,
+    )
+
+    ax.set_title(
+        panel_title,
+        fontsize=GAUSSIAN_BLUR_CONFIG["title_fontsize"],
+        pad=GAUSSIAN_BLUR_CONFIG["title_pad"],
+    )
+    ax.set_xlabel(
+        GAUSSIAN_BLUR_CONFIG["x_label"],
+        fontsize=GAUSSIAN_BLUR_CONFIG["axes_label_fontsize"],
+        labelpad=6,
+    )
+    ax.set_ylabel(
+        GAUSSIAN_BLUR_CONFIG["y_label"],
+        fontsize=GAUSSIAN_BLUR_CONFIG["axes_label_fontsize"],
+        labelpad=6,
+    )
+    ax.set_ylim(*GAUSSIAN_BLUR_CONFIG["y_limit"])
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(
+        [attack_labels.get(attack_name, attack_name) for attack_name in attack_order],
+        rotation=20,
+        ha="right",
+    )
+    ax.tick_params(axis="both", labelsize=GAUSSIAN_BLUR_CONFIG["tick_label_fontsize"])
+    ax.grid(axis="y", linestyle="--", alpha=0.45, zorder=0)
+    ax.legend(
+        handles=[
+            Patch(facecolor=GAUSSIAN_BLUR_CONFIG["no_defense_color"], label=GAUSSIAN_BLUR_CONFIG["no_defense_label"]),
+            Patch(facecolor="#3A86FF", label=GAUSSIAN_BLUR_CONFIG["blur_label"]),
+        ],
+        loc=GAUSSIAN_BLUR_CONFIG["legend_loc"],
+        fontsize=GAUSSIAN_BLUR_CONFIG["legend_fontsize"],
+        frameon=True,
+    )
+
+    if sns is not None:
+        sns.despine(ax=ax, offset=2, trim=False)
+    else:
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+
+
+def plot_gaussian_blur_comparison(panel_metrics: Dict[str, Dict[str, Dict[str, float]]]) -> Figure:
+    plt.rcParams["font.family"] = GAUSSIAN_BLUR_CONFIG["font_family"]
+    scale = float(GAUSSIAN_BLUR_CONFIG["figsize_scale"])
+    width, height = GAUSSIAN_BLUR_CONFIG["figsize"]
+    fig, axes = plt.subplots(
+        1,
+        len(panel_metrics),
+        figsize=(width * len(panel_metrics) * scale, height * scale),
+        dpi=GAUSSIAN_BLUR_CONFIG["figure_dpi"],
+        squeeze=False,
+    )
+
+    for ax, (panel_title, attack_metrics) in zip(axes[0], panel_metrics.items()):
+        _draw_gaussian_blur_panel(ax, panel_title, attack_metrics)
 
     plt.tight_layout()
     return fig

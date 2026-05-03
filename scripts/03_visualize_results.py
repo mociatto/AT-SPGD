@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torchattacks
+import torchvision.transforms.functional as TF
 from IPython.display import Image as IPythonImage
 from IPython.display import display
 from matplotlib.figure import Figure
@@ -35,6 +36,7 @@ from src.attacks.ssa import SSA
 from src.data.datasets import IMAGENET_MEAN, IMAGENET_STD, get_dataloaders
 from src.models.split_models import EMB_DIM, FullVFLModel, ImageClient, VFLServer
 from src.visualization.plots import (
+    GAUSSIAN_BLUR_CONFIG,
     GRADCAM_CONTOUR_CONFIG,
     JPEG_COMPRESSION_CONFIG,
     MAGNIFIED_NOISE_CONFIG,
@@ -42,6 +44,7 @@ from src.visualization.plots import (
     RADIAL_ENERGY_CONFIG,
     plot_average_radial_energy_comparison,
     plot_average_radial_energy_panel,
+    plot_gaussian_blur_comparison,
     plot_jpeg_compression_comparison,
     plot_jpeg_compression_panel,
     plot_noise_gradcam_sample,
@@ -336,3 +339,87 @@ for dataset_name, model_curves in jpeg_curves.items():
         dpi=JPEG_COMPRESSION_CONFIG.get("save_dpi", 300),
     )
     plt.close(fig_panel)
+
+
+# %%
+# ==========================================
+# 6. GAUSSIAN BLUR DEFENSE
+# ==========================================
+GAUSSIAN_DATASETS = GAUSSIAN_BLUR_CONFIG["datasets"]
+GAUSSIAN_MODEL_GROUPS = GAUSSIAN_BLUR_CONFIG["model_groups"]
+GAUSSIAN_ATTACK_ORDER = GAUSSIAN_BLUR_CONFIG["attack_order"]
+GAUSSIAN_SAMPLES = int(GAUSSIAN_BLUR_CONFIG["num_samples"])
+GAUSSIAN_KERNEL_SIZE = int(GAUSSIAN_BLUR_CONFIG["blur_kernel_size"])
+GAUSSIAN_SIGMA = float(GAUSSIAN_BLUR_CONFIG["blur_sigma"])
+
+if GAUSSIAN_KERNEL_SIZE % 2 == 0:
+    raise ValueError("GAUSSIAN_BLUR_CONFIG['blur_kernel_size'] must be an odd integer.")
+
+
+def resolve_attack_tensor_key(artifact: dict, attack_name: str) -> str:
+    attack_keys = {
+        "AT-SPGD (Ours)": ("adv_AT-SPGD", "adv_ATSPGD", "adv_Adaptive"),
+        "AT-SPGD": ("adv_AT-SPGD", "adv_ATSPGD", "adv_Adaptive"),
+    }.get(attack_name, (f"adv_{attack_name}",))
+    return next(key for key in attack_keys if key in artifact)
+
+
+def apply_gaussian_blur(images: torch.Tensor) -> torch.Tensor:
+    return TF.gaussian_blur(
+        images,
+        kernel_size=[GAUSSIAN_KERNEL_SIZE, GAUSSIAN_KERNEL_SIZE],
+        sigma=[GAUSSIAN_SIGMA, GAUSSIAN_SIGMA],
+    )
+
+
+def compute_gaussian_blur_panel(model_names: list[str]) -> dict[str, dict[str, float]]:
+    accumulated = {
+        attack_name: {"no_defense": [], "gaussian_blur": []}
+        for attack_name in GAUSSIAN_ATTACK_ORDER
+    }
+
+    for dataset_name in GAUSSIAN_DATASETS:
+        for model_name in model_names:
+            print(f"Running Gaussian Blur Defense for {dataset_name} / {model_name}...")
+            model = build_vfl_model(dataset_name, model_name)
+            artifact = generate_artifacts(dataset_name, model_name, num_samples=GAUSSIAN_SAMPLES)
+            labels = artifact["labels"].to(device)
+
+            for attack_name in GAUSSIAN_ATTACK_ORDER:
+                adversarial = artifact[resolve_attack_tensor_key(artifact, attack_name)].to(device)
+                blurred = apply_gaussian_blur(adversarial)
+                with torch.no_grad():
+                    no_defense_logits = model(adversarial)
+                    blur_logits = model(blurred)
+                    no_defense_asr = (no_defense_logits.argmax(dim=1) != labels).float().mean().item() * 100.0
+                    blur_asr = (blur_logits.argmax(dim=1) != labels).float().mean().item() * 100.0
+                accumulated[attack_name]["no_defense"].append(no_defense_asr)
+                accumulated[attack_name]["gaussian_blur"].append(blur_asr)
+                del adversarial, blurred, no_defense_logits, blur_logits
+
+            del model, artifact, labels
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+    return {
+        attack_name: {
+            metric_name: float(np.mean(values))
+            for metric_name, values in metric_values.items()
+        }
+        for attack_name, metric_values in accumulated.items()
+    }
+
+
+gaussian_blur_metrics = {
+    panel_title: compute_gaussian_blur_panel(model_names)
+    for panel_title, model_names in GAUSSIAN_MODEL_GROUPS.items()
+}
+
+fig_gaussian = plot_gaussian_blur_comparison(gaussian_blur_metrics)
+fig_gaussian.savefig(
+    FIGURE_DIR / "03_gaussian_blur_defense.pdf",
+    bbox_inches="tight",
+    dpi=GAUSSIAN_BLUR_CONFIG.get("save_dpi", 300),
+)
+display_preview(fig_gaussian, GAUSSIAN_BLUR_CONFIG)
+plt.close(fig_gaussian)
