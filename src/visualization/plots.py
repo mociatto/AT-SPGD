@@ -18,7 +18,7 @@ except ImportError:
 
 MAGNIFIED_NOISE_CONFIG = {
     "font_family": "serif",
-    "title_fontsize": 12,
+    "title_fontsize": 10,
     "figure_dpi": 100,
     "save_dpi": 300,
     "display_width_px": 800,
@@ -108,7 +108,9 @@ RADIAL_ENERGY_CONFIG = {
 
 PARETO_FRONTIER_CONFIG = {
     "font_family": "serif",
-    "axes_label_fontsize": 12,
+    "axes_label_fontsize": 10,
+    "title_fontsize": 10,
+    "title_pad": 8,
     "tick_label_fontsize": 10,
     "legend_fontsize": 10,
     "annotation_fontsize": 8,
@@ -122,6 +124,23 @@ PARETO_FRONTIER_CONFIG = {
     "transformer_dataset": "gtsrb",
     "transformer_model": "swin_tiny_patch4_window7_224",
     "panel_labels": {"cnn": "CNN", "transformer": "Transformer"},
+    "datasets": ["cifar10", "cifar100", "svhn", "gtsrb"],
+    "model_pairs": [
+        ("resnet18", "swin_tiny_patch4_window7_224"),
+        ("mobilenet_v2", "vit_base_patch16_224"),
+    ],
+    "model_labels": {
+        "resnet18": "ResNet-18",
+        "mobilenet_v2": "MobileNetV2",
+        "swin_tiny_patch4_window7_224": "Swin-Tiny",
+        "vit_base_patch16_224": "ViT-B/16",
+    },
+    "dataset_labels": {
+        "cifar10": "CIFAR-10",
+        "cifar100": "CIFAR-100",
+        "svhn": "SVHN",
+        "gtsrb": "GTSRB",
+    },
     "k_ratios": [0.01, 0.02, 0.03, 0.04, 0.05, 0.07, 0.1],
     "alpha_multipliers": [0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 1.0, 1.5],
     "steps_sweep": [1, 2, 3, 8],
@@ -182,24 +201,25 @@ JPEG_COMPRESSION_CONFIG = {
 GAUSSIAN_BLUR_CONFIG = {
     "font_family": "serif",
     "axes_label_fontsize": 10,
-    "title_fontsize": 11,
+    "title_fontsize": 10,
     "title_pad": 8,
-    "tick_label_fontsize": 9,
+    "tick_label_fontsize": 10,
     "legend_fontsize": 8,
     "legend_loc": "lower left",
     "figure_dpi": 100,
     "save_dpi": 300,
     "figsize": (4.5, 3.5),
     "figsize_scale": 1.0,
-    "display_width_px": 900,
+    "display_width_px": 800,
     "datasets": ["cifar10", "cifar100", "svhn", "gtsrb"],
     "model_groups": {
-        "CNN Average": ["resnet18", "mobilenet_v2"],
-        "Transformer Average": ["swin_tiny_patch4_window7_224", "vit_base_patch16_224"],
+        "CNN": ["resnet18", "mobilenet_v2"],
+        "Transformer": ["swin_tiny_patch4_window7_224", "vit_base_patch16_224"],
     },
     "num_samples": 32,
     "blur_kernel_size": 5,
     "blur_sigma": 1.0,
+    "resize_scale": 0.4,
     "attack_order": ["PGD", "APGD", "MIFGSM", "SSA", "AT-SPGD (Ours)"],
     "attack_labels": {
         "PGD": "PGD",
@@ -208,18 +228,13 @@ GAUSSIAN_BLUR_CONFIG = {
         "SSA": "SSA",
         "AT-SPGD (Ours)": "AT-SPGD",
     },
-    "attack_colors": {
-        "PGD": "#FFBE0B",
-        "APGD": "#FB5607",
-        "MIFGSM": "#FF006E",
-        "SSA": "#8338EC",
-        "AT-SPGD (Ours)": "#3A86FF",
+    "defense_colors": {
+        "CNN": {"blur_asr": "#FFBE0B", "resize_asr": "#FB5607"},
+        "Transformer": {"blur_asr": "#8338EC", "resize_asr": "#3A86FF"},
     },
-    "no_defense_color": "#B8B8B8",
-    "no_defense_label": "No Defense",
     "blur_label": "Gaussian Blur",
-    "no_defense_bar_width": 0.72,
-    "blur_bar_width": 0.46,
+    "resize_label": "Resize Defense",
+    "bar_width": 0.34,
     "bar_alpha": 1.0,
     "x_label": "Attack Method",
     "y_label": "Attack Success Rate (%)",
@@ -620,14 +635,10 @@ def _draw_pareto_frontier_panel(ax, results: list[dict], panel_label: str | None
             )
 
     if panel_label is not None:
-        ax.text(
-            0.02,
-            0.96,
+        ax.set_title(
             panel_label,
-            transform=ax.transAxes,
-            ha="left",
-            va="top",
-            fontsize=PARETO_FRONTIER_CONFIG["axes_label_fontsize"],
+            fontsize=PARETO_FRONTIER_CONFIG["title_fontsize"],
+            pad=PARETO_FRONTIER_CONFIG["title_pad"],
         )
 
     ax.set_xlabel(
@@ -777,26 +788,29 @@ def plot_jpeg_compression_comparison(dataset_curves: Dict[str, Dict[str, list[fl
 def _draw_gaussian_blur_panel(ax, panel_title: str, attack_metrics: Dict[str, Dict[str, float]]) -> None:
     attack_order = GAUSSIAN_BLUR_CONFIG["attack_order"]
     attack_labels = GAUSSIAN_BLUR_CONFIG["attack_labels"]
-    attack_colors = GAUSSIAN_BLUR_CONFIG["attack_colors"]
+    defense_colors = GAUSSIAN_BLUR_CONFIG["defense_colors"][panel_title]
     x_positions = np.arange(len(attack_order))
-    no_defense_values = [attack_metrics[attack_name]["no_defense"] for attack_name in attack_order]
-    blur_values = [attack_metrics[attack_name]["gaussian_blur"] for attack_name in attack_order]
+    bar_width = float(GAUSSIAN_BLUR_CONFIG["bar_width"])
+    blur_values = [attack_metrics[attack_name]["blur_asr"] for attack_name in attack_order]
+    resize_values = [attack_metrics[attack_name]["resize_asr"] for attack_name in attack_order]
 
     ax.bar(
-        x_positions,
-        no_defense_values,
-        width=float(GAUSSIAN_BLUR_CONFIG["no_defense_bar_width"]),
-        color=GAUSSIAN_BLUR_CONFIG["no_defense_color"],
-        alpha=float(GAUSSIAN_BLUR_CONFIG["bar_alpha"]),
-        zorder=1,
-    )
-    ax.bar(
-        x_positions,
+        x_positions - bar_width / 2,
         blur_values,
-        width=float(GAUSSIAN_BLUR_CONFIG["blur_bar_width"]),
-        color=[attack_colors[attack_name] for attack_name in attack_order],
+        width=bar_width,
+        color=defense_colors["blur_asr"],
         alpha=float(GAUSSIAN_BLUR_CONFIG["bar_alpha"]),
         zorder=2,
+        label=GAUSSIAN_BLUR_CONFIG["blur_label"],
+    )
+    ax.bar(
+        x_positions + bar_width / 2,
+        resize_values,
+        width=bar_width,
+        color=defense_colors["resize_asr"],
+        alpha=float(GAUSSIAN_BLUR_CONFIG["bar_alpha"]),
+        zorder=2,
+        label=GAUSSIAN_BLUR_CONFIG["resize_label"],
     )
 
     ax.set_title(
@@ -825,8 +839,8 @@ def _draw_gaussian_blur_panel(ax, panel_title: str, attack_metrics: Dict[str, Di
     ax.grid(axis="y", linestyle="--", alpha=0.45, zorder=0)
     ax.legend(
         handles=[
-            Patch(facecolor=GAUSSIAN_BLUR_CONFIG["no_defense_color"], label=GAUSSIAN_BLUR_CONFIG["no_defense_label"]),
-            Patch(facecolor="#3A86FF", label=GAUSSIAN_BLUR_CONFIG["blur_label"]),
+            Patch(facecolor=defense_colors["blur_asr"], label=GAUSSIAN_BLUR_CONFIG["blur_label"]),
+            Patch(facecolor=defense_colors["resize_asr"], label=GAUSSIAN_BLUR_CONFIG["resize_label"]),
         ],
         loc=GAUSSIAN_BLUR_CONFIG["legend_loc"],
         fontsize=GAUSSIAN_BLUR_CONFIG["legend_fontsize"],

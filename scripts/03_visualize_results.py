@@ -23,6 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
 # %%
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import torch
 import torchattacks
 import torchvision.transforms.functional as TF
@@ -58,7 +59,9 @@ from src.visualization.plots import (
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 CHECKPOINT_DIR = Path("/kaggle/input/notebooks/mostafaanoosha/at-spgd-01-training/AT-SPGD/checkpoints")
 FIGURE_DIR = Path.cwd() / "results" / "figures"
+CSV_DIR = Path.cwd() / "results" / "csv"
 FIGURE_DIR.mkdir(parents=True, exist_ok=True)
+CSV_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _denormalize(images: torch.Tensor) -> torch.Tensor:
@@ -195,19 +198,16 @@ for dataset_name in ENERGY_DATASETS:
 # 4. PARETO FRONTIER
 # ==========================================
 PARETO_SAMPLES = 64
-PARETO_PANEL_LABELS = PARETO_FRONTIER_CONFIG["panel_labels"]
-PARETO_CASES = {
-    PARETO_PANEL_LABELS["cnn"]: {
-        "panel_key": "cnn",
-        "dataset": PARETO_FRONTIER_CONFIG["cnn_dataset"],
-        "model": PARETO_FRONTIER_CONFIG["cnn_model"],
-    },
-    PARETO_PANEL_LABELS["transformer"]: {
-        "panel_key": "transformer",
-        "dataset": PARETO_FRONTIER_CONFIG["transformer_dataset"],
-        "model": PARETO_FRONTIER_CONFIG["transformer_model"],
-    },
-}
+PARETO_DATASETS = PARETO_FRONTIER_CONFIG["datasets"]
+PARETO_MODEL_PAIRS = PARETO_FRONTIER_CONFIG["model_pairs"]
+PARETO_MODEL_LABELS = PARETO_FRONTIER_CONFIG["model_labels"]
+PARETO_DATASET_LABELS = PARETO_FRONTIER_CONFIG["dataset_labels"]
+
+
+def pareto_panel_label(dataset_name: str, model_name: str) -> str:
+    model_label = PARETO_MODEL_LABELS.get(model_name, model_name)
+    dataset_label = PARETO_DATASET_LABELS.get(dataset_name, dataset_name.upper())
+    return f"{model_label} | {dataset_label}"
 
 
 def run_pareto_sweep(dataset_name: str, model_name: str) -> list[dict]:
@@ -245,27 +245,20 @@ def run_pareto_sweep(dataset_name: str, model_name: str) -> list[dict]:
     return results
 
 
-pareto_results = {
-    panel_label: run_pareto_sweep(case["dataset"], case["model"]) for panel_label, case in PARETO_CASES.items()
-}
-
-fig_pareto = plot_pareto_frontier_comparison(pareto_results)
-fig_pareto.savefig(
-    FIGURE_DIR / "03_pareto_frontier.pdf",
-    bbox_inches="tight",
-    dpi=PARETO_FRONTIER_CONFIG.get("save_dpi", 300),
-)
-display_preview(fig_pareto, PARETO_FRONTIER_CONFIG)
-plt.close(fig_pareto)
-
-for panel_label, case in PARETO_CASES.items():
-    fig_panel = plot_pareto_frontier_panel(pareto_results[panel_label], panel_label=panel_label)
-    fig_panel.savefig(
-        FIGURE_DIR / f"03_pareto_frontier_{case['panel_key']}_{case['model']}.pdf",
-        bbox_inches="tight",
-        dpi=PARETO_FRONTIER_CONFIG.get("save_dpi", 300),
-    )
-    plt.close(fig_panel)
+for dataset_name in PARETO_DATASETS:
+    for row_idx, (cnn_model, transformer_model) in enumerate(PARETO_MODEL_PAIRS, start=1):
+        row_results = {
+            pareto_panel_label(dataset_name, cnn_model): run_pareto_sweep(dataset_name, cnn_model),
+            pareto_panel_label(dataset_name, transformer_model): run_pareto_sweep(dataset_name, transformer_model),
+        }
+        fig_pareto = plot_pareto_frontier_comparison(row_results)
+        fig_pareto.savefig(
+            FIGURE_DIR / f"03_pareto_frontier_{dataset_name}_row_{row_idx}_{cnn_model}_{transformer_model}.pdf",
+            bbox_inches="tight",
+            dpi=PARETO_FRONTIER_CONFIG.get("save_dpi", 300),
+        )
+        display_preview(fig_pareto, PARETO_FRONTIER_CONFIG)
+        plt.close(fig_pareto)
 
 
 # %%
@@ -343,7 +336,7 @@ for dataset_name, model_curves in jpeg_curves.items():
 
 # %%
 # ==========================================
-# 6. GAUSSIAN BLUR DEFENSE
+# 6. BLUR AND RESIZE DEFENSES
 # ==========================================
 GAUSSIAN_DATASETS = GAUSSIAN_BLUR_CONFIG["datasets"]
 GAUSSIAN_MODEL_GROUPS = GAUSSIAN_BLUR_CONFIG["model_groups"]
@@ -351,9 +344,13 @@ GAUSSIAN_ATTACK_ORDER = GAUSSIAN_BLUR_CONFIG["attack_order"]
 GAUSSIAN_SAMPLES = int(GAUSSIAN_BLUR_CONFIG["num_samples"])
 GAUSSIAN_KERNEL_SIZE = int(GAUSSIAN_BLUR_CONFIG["blur_kernel_size"])
 GAUSSIAN_SIGMA = float(GAUSSIAN_BLUR_CONFIG["blur_sigma"])
+RESIZE_SCALE = float(GAUSSIAN_BLUR_CONFIG["resize_scale"])
+GAUSSIAN_OUTPUT_CSV = CSV_DIR / "03_blur_resize_defense_metrics.csv"
 
 if GAUSSIAN_KERNEL_SIZE % 2 == 0:
     raise ValueError("GAUSSIAN_BLUR_CONFIG['blur_kernel_size'] must be an odd integer.")
+if not 0.0 < RESIZE_SCALE <= 1.0:
+    raise ValueError("GAUSSIAN_BLUR_CONFIG['resize_scale'] must be in the interval (0, 1].")
 
 
 def resolve_attack_tensor_key(artifact: dict, attack_name: str) -> str:
@@ -372,54 +369,89 @@ def apply_gaussian_blur(images: torch.Tensor) -> torch.Tensor:
     )
 
 
-def compute_gaussian_blur_panel(model_names: list[str]) -> dict[str, dict[str, float]]:
-    accumulated = {
-        attack_name: {"no_defense": [], "gaussian_blur": []}
-        for attack_name in GAUSSIAN_ATTACK_ORDER
-    }
-
-    for dataset_name in GAUSSIAN_DATASETS:
-        for model_name in model_names:
-            print(f"Running Gaussian Blur Defense for {dataset_name} / {model_name}...")
-            model = build_vfl_model(dataset_name, model_name)
-            artifact = generate_artifacts(dataset_name, model_name, num_samples=GAUSSIAN_SAMPLES)
-            labels = artifact["labels"].to(device)
-
-            for attack_name in GAUSSIAN_ATTACK_ORDER:
-                adversarial = artifact[resolve_attack_tensor_key(artifact, attack_name)].to(device)
-                blurred = apply_gaussian_blur(adversarial)
-                with torch.no_grad():
-                    no_defense_logits = model(adversarial)
-                    blur_logits = model(blurred)
-                    no_defense_asr = (no_defense_logits.argmax(dim=1) != labels).float().mean().item() * 100.0
-                    blur_asr = (blur_logits.argmax(dim=1) != labels).float().mean().item() * 100.0
-                accumulated[attack_name]["no_defense"].append(no_defense_asr)
-                accumulated[attack_name]["gaussian_blur"].append(blur_asr)
-                del adversarial, blurred, no_defense_logits, blur_logits
-
-            del model, artifact, labels
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-
-    return {
-        attack_name: {
-            metric_name: float(np.mean(values))
-            for metric_name, values in metric_values.items()
-        }
-        for attack_name, metric_values in accumulated.items()
-    }
+def apply_resize_defense(images: torch.Tensor) -> torch.Tensor:
+    height, width = images.shape[-2:]
+    resized_height = max(1, int(round(height * RESIZE_SCALE)))
+    resized_width = max(1, int(round(width * RESIZE_SCALE)))
+    downsampled = TF.resize(
+        images,
+        size=[resized_height, resized_width],
+        interpolation=TF.InterpolationMode.BILINEAR,
+        antialias=True,
+    )
+    return TF.resize(
+        downsampled,
+        size=[height, width],
+        interpolation=TF.InterpolationMode.BILINEAR,
+        antialias=True,
+    )
 
 
-gaussian_blur_metrics = {
-    panel_title: compute_gaussian_blur_panel(model_names)
-    for panel_title, model_names in GAUSSIAN_MODEL_GROUPS.items()
-}
+def compute_blur_resize_rows() -> pd.DataFrame:
+    rows = []
+    for model_group, model_names in GAUSSIAN_MODEL_GROUPS.items():
+        for dataset_name in GAUSSIAN_DATASETS:
+            for model_name in model_names:
+                print(f"Running Blur/Resize Defenses for {dataset_name} / {model_name}...")
+                model = build_vfl_model(dataset_name, model_name)
+                artifact = generate_artifacts(dataset_name, model_name, num_samples=GAUSSIAN_SAMPLES)
+                labels = artifact["labels"].to(device)
 
-fig_gaussian = plot_gaussian_blur_comparison(gaussian_blur_metrics)
+                for attack_name in GAUSSIAN_ATTACK_ORDER:
+                    adversarial = artifact[resolve_attack_tensor_key(artifact, attack_name)].to(device)
+                    blurred = apply_gaussian_blur(adversarial)
+                    resized = apply_resize_defense(adversarial)
+                    with torch.no_grad():
+                        blur_logits = model(blurred)
+                        resize_logits = model(resized)
+                        blur_asr = (blur_logits.argmax(dim=1) != labels).float().mean().item() * 100.0
+                        resize_asr = (resize_logits.argmax(dim=1) != labels).float().mean().item() * 100.0
+                    rows.append(
+                        {
+                            "model_group": model_group,
+                            "dataset": dataset_name,
+                            "model": model_name,
+                            "attack": attack_name,
+                            "blur_asr": blur_asr,
+                            "resize_asr": resize_asr,
+                        }
+                    )
+                    del adversarial, blurred, resized, blur_logits, resize_logits
+
+                del model, artifact, labels
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+    return pd.DataFrame(rows)
+
+
+def summarize_defense_metrics(metrics_df: pd.DataFrame) -> dict[str, dict[str, dict[str, float]]]:
+    panel_metrics = {}
+    for model_group in GAUSSIAN_MODEL_GROUPS:
+        group_df = metrics_df[metrics_df["model_group"] == model_group]
+        attack_metrics = {}
+        for attack_name in GAUSSIAN_ATTACK_ORDER:
+            attack_df = group_df[group_df["attack"] == attack_name]
+            attack_metrics[attack_name] = {
+                "blur_asr": float(attack_df["blur_asr"].mean()),
+                "resize_asr": float(attack_df["resize_asr"].mean()),
+            }
+        panel_metrics[model_group] = attack_metrics
+    return panel_metrics
+
+
+defense_df = compute_blur_resize_rows()
+defense_df = defense_df.sort_values(["model_group", "dataset", "model", "attack"]).reset_index(drop=True)
+defense_df.to_csv(GAUSSIAN_OUTPUT_CSV, index=False)
+
+defense_panel_metrics = summarize_defense_metrics(defense_df)
+
+fig_gaussian = plot_gaussian_blur_comparison(defense_panel_metrics)
 fig_gaussian.savefig(
-    FIGURE_DIR / "03_gaussian_blur_defense.pdf",
+    FIGURE_DIR / "03_blur_resize_defense.pdf",
     bbox_inches="tight",
     dpi=GAUSSIAN_BLUR_CONFIG.get("save_dpi", 300),
 )
 display_preview(fig_gaussian, GAUSSIAN_BLUR_CONFIG)
 plt.close(fig_gaussian)
+display(defense_df)
