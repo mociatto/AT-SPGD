@@ -17,6 +17,14 @@ The framework trains a split image classifier composed of:
 
 The attack pipeline evaluates standard first-order baselines and the proposed adaptive spectral attack. AT-SPGD perturbs inputs through a frequency-aware optimization path, while preserving a clean interface compatible with the split-learning inference model.
 
+## Environment Setup
+
+Install dependencies from the reproducibility requirements file:
+
+```bash
+pip install -r requirements.txt
+```
+
 ## Reproducibility
 
 We strongly recommend running the experiments on accelerator-backed environments such as Kaggle, Google Colab, or an equivalent CUDA-enabled workstation. The full benchmark uses multiple datasets, several pretrained backbone families, and a diverse set of adversarial attacks, so CPU-only execution is not practical for full reproduction.
