@@ -45,22 +45,21 @@ These notebooks are intended to mirror the corresponding scripts in `scripts/` w
 
 ```text
 src/
-  attacks/               # AT-SPGD and SSA attack implementations
-  data/                  # Dataset loading and transforms
-  engine/                # Training and attack evaluation loops
-  models/                # Split-learning model components
-  utils/                 # Metrics and evaluation utilities
-  visualization/         # Publication plotting functions
+  attacks/                  # AT-SPGD and SSA attack implementations
+  data/                     # Dataset loading and transforms
+  engine/                   # Training and attack evaluation loops
+  models/                   # Split-learning model components
+  utils/                    # Metrics and evaluation utilities
+  visualization/            # Publication plotting functions
 
 scripts/
-  01_train_vfl.py        # Split-model training and checkpoint export
-  02_evaluate_attacks.py # Attack evaluation and artifact export
-  03_visualize_results.py# Figure/table regeneration
+  01_train_vfl.py           # Split-model training and checkpoint export
+  02_evaluate_attacks.py    # Attack evaluation and artifact export
+  03_visualize_results.py   # Figure/table regeneration
 
-# Exported reproducibility notebooks (outputs of the above scripts, in project root)
-01_train_vfl.ipynb       # Interactive training notebook, generated from 01_train_vfl.py
-02_evaluate_attacks.ipynb# Attack evaluation results, generated from 02_evaluate_attacks.py
-03_visualize_results.ipynb# Figures/tables notebook, generated from 03_visualize_results.py
+01_train_vfl.ipynb          # Generated from 01_train_vfl.py
+02_evaluate_attacks.ipynb   # Generated from 02_evaluate_attacks.py
+03_visualize_results.ipynb  # Generated from 03_visualize_results.py
 ```
 # End of Selection
 ```
