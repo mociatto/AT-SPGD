@@ -1,4 +1,4 @@
-# AT-SPGD: Frequency-Adaptive Spectral Evasion for Split-Learning Inference
+# AT-SPGD: Adaptive Top-K Spectral Projected Gradient Descent
 
 This repository contains the reproducibility package for the paper:
 
