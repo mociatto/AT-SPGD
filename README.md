@@ -68,4 +68,4 @@ Generated outputs such as checkpoints, result tables, adversarial tensors, and f
 
 This project is provided for research and scientific use. You are welcome to use and build upon these materials in your own academic work, provided that appropriate reference is given to this repository and its authors. Please cite the project in any publications, presentations, or derivative works that make use of the code or results.
 
-<p align="center"><strong>Thank you for reviewing this work.</strong></p>
+<p align="center"><strong style="font-size:1.4em;">Thank you for reviewing this work ♥︎</strong></p>
