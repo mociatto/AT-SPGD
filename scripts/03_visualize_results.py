@@ -5,7 +5,7 @@
 %cd AT-SPGD
 
 # %%
-!pip install -q matplotlib torchattacks lpips torchmetrics
+!pip install -q matplotlib
 
 # %%
 from __future__ import annotations
@@ -14,7 +14,7 @@ from __future__ import annotations
 import io
 import sys
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 PROJECT_ROOT = Path.cwd()
 if str(PROJECT_ROOT) not in sys.path:
@@ -95,7 +95,7 @@ def get_clean_batch(dataset_name: str, num_samples: int) -> Tuple[torch.Tensor, 
     return _denormalize(images[:num_samples]), labels[:num_samples]
 
 
-def load_saved_artifacts(dataset_name: str, model_name: str) -> dict:
+def load_saved_artifacts(dataset_name: str, model_name: str, num_samples: Optional[int] = None) -> dict:
     artifact_path = ARTIFACT_DIR / f"02_artifacts_{dataset_name}_{model_name}.pt"
     try:
         artifact = torch.load(artifact_path, map_location="cpu", weights_only=False)
@@ -114,6 +114,12 @@ def load_saved_artifacts(dataset_name: str, model_name: str) -> dict:
             continue
         tensor_key = key if key.startswith("adv_") else f"adv_{key}"
         vis_dict[tensor_key] = value
+
+    if num_samples is not None:
+        vis_dict = {
+            key: value[:num_samples] if isinstance(value, torch.Tensor) and value.size(0) >= num_samples else value
+            for key, value in vis_dict.items()
+        }
 
     return vis_dict
 
@@ -134,7 +140,7 @@ VIS_MODEL = "resnet18"
 NUM_VIS_SAMPLES = int(MAGNIFIED_NOISE_CONFIG.get("num_samples", 5))
 
 print(f"Loading visual artifacts for {VIS_DATASET} / {VIS_MODEL}...")
-vis_dict = load_saved_artifacts(VIS_DATASET, VIS_MODEL)
+vis_dict = load_saved_artifacts(VIS_DATASET, VIS_MODEL, num_samples=NUM_VIS_SAMPLES)
 full_model = build_vfl_model(VIS_DATASET, VIS_MODEL)
 
 for i in range(NUM_VIS_SAMPLES):
@@ -169,16 +175,16 @@ def radial_panel_label(dataset_name: str, model_name: str) -> str:
     return f"{model_label} | {dataset_label}"
 
 
-print(f"Generating Radial Energy rows ({ENERGY_SAMPLES} samples per model/dataset)...")
+print(f"Loading Radial Energy artifacts ({ENERGY_SAMPLES} samples per model/dataset)...")
 
 for dataset_name in ENERGY_DATASETS:
     for row_idx, (cnn_model, transformer_model) in enumerate(ENERGY_MODEL_PAIRS, start=1):
         row_panels = {
             radial_panel_label(dataset_name, cnn_model): [
-                load_saved_artifacts(dataset_name, cnn_model)
+                load_saved_artifacts(dataset_name, cnn_model, num_samples=ENERGY_SAMPLES)
             ],
             radial_panel_label(dataset_name, transformer_model): [
-                load_saved_artifacts(dataset_name, transformer_model)
+                load_saved_artifacts(dataset_name, transformer_model, num_samples=ENERGY_SAMPLES)
             ],
         }
         fig_energy = plot_average_radial_energy_comparison(row_panels)
@@ -284,7 +290,7 @@ def apply_jpeg_batch(images: torch.Tensor, quality: int) -> torch.Tensor:
 def compute_jpeg_asr_curve(dataset_name: str, model_name: str) -> list[float]:
     print(f"Running JPEG Compression for {dataset_name} / {model_name}...")
     model = build_vfl_model(dataset_name, model_name)
-    artifact = load_saved_artifacts(dataset_name, model_name)
+    artifact = load_saved_artifacts(dataset_name, model_name, num_samples=32)
 
     attack_key = next((key for key in ("adv_AT-SPGD", "adv_ATSPGD", "adv_Adaptive") if key in artifact), None)
     if attack_key is None:
@@ -392,11 +398,11 @@ def compute_blur_resize_rows() -> pd.DataFrame:
             for model_name in model_names:
                 print(f"Running Blur/Resize Defenses for {dataset_name} / {model_name}...")
                 model = build_vfl_model(dataset_name, model_name)
-                artifact = load_saved_artifacts(dataset_name, model_name)
-                labels = artifact["labels"][:GAUSSIAN_SAMPLES].to(device)
+                artifact = load_saved_artifacts(dataset_name, model_name, num_samples=GAUSSIAN_SAMPLES)
+                labels = artifact["labels"].to(device)
 
                 for attack_name in GAUSSIAN_ATTACK_ORDER:
-                    adversarial = artifact[resolve_attack_tensor_key(artifact, attack_name)][:GAUSSIAN_SAMPLES].to(device)
+                    adversarial = artifact[resolve_attack_tensor_key(artifact, attack_name)].to(device)
                     blurred = apply_gaussian_blur(adversarial)
                     resized = apply_resize_defense(adversarial)
                     with torch.no_grad():
