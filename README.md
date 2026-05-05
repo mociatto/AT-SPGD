@@ -61,8 +61,6 @@ scripts/
 02_evaluate_attacks.ipynb   # Generated from 02_evaluate_attacks.py
 03_visualize_results.ipynb  # Generated from 03_visualize_results.py
 ```
-# End of Selection
-```
 
 ## Notes for Reviewers
 
