@@ -3,6 +3,7 @@
 # Curated project surface.
 !.gitignore
 !README.md
+!requirements.txt
 !src/
 !src/**
 !scripts/
