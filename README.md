@@ -66,6 +66,6 @@ scripts/
 
 Generated outputs such as checkpoints, result tables, adversarial tensors, and figures are intentionally excluded from version control. They are recreated by running the scripts above in order.
 
-Thank you for reviewing this work.
-
 This project is provided for research and scientific use. You are welcome to use and build upon these materials in your own academic work, provided that appropriate reference is given to this repository and its authors. Please cite the project in any publications, presentations, or derivative works that make use of the code or results.
+
+### Thank you for reviewing this work.
