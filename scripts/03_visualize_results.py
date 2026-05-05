@@ -25,7 +25,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-import torchattacks
 import torchvision.transforms.functional as TF
 from IPython.display import Image as IPythonImage
 from IPython.display import display
@@ -33,7 +32,6 @@ from matplotlib.figure import Figure
 from PIL import Image
 
 from src.attacks.at_spgd import ATSPGD
-from src.attacks.ssa import SSA
 from src.data.datasets import IMAGENET_MEAN, IMAGENET_STD, get_dataloaders
 from src.models.split_models import EMB_DIM, FullVFLModel, ImageClient, VFLServer
 from src.visualization.plots import (
@@ -60,6 +58,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 CHECKPOINT_DIR = Path("/kaggle/input/notebooks/mostafaanoosha/at-spgd-01-training/AT-SPGD/checkpoints")
 FIGURE_DIR = Path.cwd() / "results" / "figures"
 CSV_DIR = Path.cwd() / "results" / "csv"
+ARTIFACT_DIR = Path.cwd() / "results" / "tensors"
 FIGURE_DIR.mkdir(parents=True, exist_ok=True)
 CSV_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -96,27 +95,26 @@ def get_clean_batch(dataset_name: str, num_samples: int) -> Tuple[torch.Tensor, 
     return _denormalize(images[:num_samples]), labels[:num_samples]
 
 
-def generate_artifacts(dataset_name: str, model_name: str, num_samples: int) -> dict:
-    model = build_vfl_model(dataset_name, model_name)
-    images, labels = get_clean_batch(dataset_name, num_samples)
-    images, labels = images.to(device), labels.to(device)
+def load_saved_artifacts(dataset_name: str, model_name: str) -> dict:
+    artifact_path = ARTIFACT_DIR / f"02_artifacts_{dataset_name}_{model_name}.pt"
+    try:
+        artifact = torch.load(artifact_path, map_location="cpu", weights_only=False)
+    except TypeError:
+        artifact = torch.load(artifact_path, map_location="cpu")
 
-    eps, alpha, steps = 8.0 / 255.0, 2.0 / 255.0, 10
-    attacks = {
-        "PGD": torchattacks.PGD(model, eps=eps, alpha=alpha, steps=steps),
-        "APGD": torchattacks.APGD(model, eps=eps, steps=steps),
-        "MIFGSM": torchattacks.MIFGSM(model, eps=eps, steps=steps),
-        "SSA": SSA(model, eps=eps, alpha=alpha, steps=steps),
-        "AT-SPGD": ATSPGD(model, eps=eps, alpha_f=alpha, alpha_x=alpha, steps=steps, K=0.1),
+    vis_dict = {
+        "clean_images": artifact.get("clean_images", artifact.get("clean")),
+        "labels": artifact["labels"],
     }
+    if vis_dict["clean_images"] is None:
+        raise KeyError(f"No clean image tensor found in {artifact_path}.")
 
-    vis_dict = {"clean_images": images.cpu(), "labels": labels.cpu()}
-    for attack_name, attack in attacks.items():
-        vis_dict[f"adv_{attack_name}"] = attack(images, labels).cpu()
+    for key, value in artifact.items():
+        if key in {"clean", "clean_images", "labels"}:
+            continue
+        tensor_key = key if key.startswith("adv_") else f"adv_{key}"
+        vis_dict[tensor_key] = value
 
-    del model, images, labels
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
     return vis_dict
 
 
@@ -135,8 +133,8 @@ VIS_DATASET = "gtsrb"
 VIS_MODEL = "resnet18"
 NUM_VIS_SAMPLES = int(MAGNIFIED_NOISE_CONFIG.get("num_samples", 5))
 
-print(f"Generating visual artifacts for {VIS_DATASET} / {VIS_MODEL}...")
-vis_dict = generate_artifacts(VIS_DATASET, VIS_MODEL, NUM_VIS_SAMPLES)
+print(f"Loading visual artifacts for {VIS_DATASET} / {VIS_MODEL}...")
+vis_dict = load_saved_artifacts(VIS_DATASET, VIS_MODEL)
 full_model = build_vfl_model(VIS_DATASET, VIS_MODEL)
 
 for i in range(NUM_VIS_SAMPLES):
@@ -177,10 +175,10 @@ for dataset_name in ENERGY_DATASETS:
     for row_idx, (cnn_model, transformer_model) in enumerate(ENERGY_MODEL_PAIRS, start=1):
         row_panels = {
             radial_panel_label(dataset_name, cnn_model): [
-                generate_artifacts(dataset_name, cnn_model, num_samples=ENERGY_SAMPLES)
+                load_saved_artifacts(dataset_name, cnn_model)
             ],
             radial_panel_label(dataset_name, transformer_model): [
-                generate_artifacts(dataset_name, transformer_model, num_samples=ENERGY_SAMPLES)
+                load_saved_artifacts(dataset_name, transformer_model)
             ],
         }
         fig_energy = plot_average_radial_energy_comparison(row_panels)
@@ -286,7 +284,7 @@ def apply_jpeg_batch(images: torch.Tensor, quality: int) -> torch.Tensor:
 def compute_jpeg_asr_curve(dataset_name: str, model_name: str) -> list[float]:
     print(f"Running JPEG Compression for {dataset_name} / {model_name}...")
     model = build_vfl_model(dataset_name, model_name)
-    artifact = generate_artifacts(dataset_name, model_name, num_samples=32)
+    artifact = load_saved_artifacts(dataset_name, model_name)
 
     attack_key = next((key for key in ("adv_AT-SPGD", "adv_ATSPGD", "adv_Adaptive") if key in artifact), None)
     if attack_key is None:
@@ -394,11 +392,11 @@ def compute_blur_resize_rows() -> pd.DataFrame:
             for model_name in model_names:
                 print(f"Running Blur/Resize Defenses for {dataset_name} / {model_name}...")
                 model = build_vfl_model(dataset_name, model_name)
-                artifact = generate_artifacts(dataset_name, model_name, num_samples=GAUSSIAN_SAMPLES)
-                labels = artifact["labels"].to(device)
+                artifact = load_saved_artifacts(dataset_name, model_name)
+                labels = artifact["labels"][:GAUSSIAN_SAMPLES].to(device)
 
                 for attack_name in GAUSSIAN_ATTACK_ORDER:
-                    adversarial = artifact[resolve_attack_tensor_key(artifact, attack_name)].to(device)
+                    adversarial = artifact[resolve_attack_tensor_key(artifact, attack_name)][:GAUSSIAN_SAMPLES].to(device)
                     blurred = apply_gaussian_blur(adversarial)
                     resized = apply_resize_defense(adversarial)
                     with torch.no_grad():

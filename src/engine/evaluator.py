@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import gc
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import lpips
 import torch
@@ -65,7 +65,7 @@ def _build_attack_suite(
         "APGD": torchattacks.APGD(model, eps=eps, steps=steps),
         "MIFGSM": torchattacks.MIFGSM(model, eps=eps, steps=steps),
         "SSA": SSA(model, eps=eps, alpha=alpha, steps=steps),
-        "ATSPGD": ATSPGD(model, eps=eps, alpha_f=alpha, alpha_x=alpha, steps=steps, K=K),
+        "AT-SPGD": ATSPGD(model, eps=eps, alpha_f=alpha, alpha_x=alpha, steps=steps, K=K),
     }
 
 
@@ -84,12 +84,13 @@ def _evaluate_attack(
     eps: float,
     alpha: float,
     steps: int,
-) -> Dict[str, float | str]:
+) -> Tuple[Dict[str, float | str], torch.Tensor]:
     correct = 0
     total = int(labels.size(0))
     psnr_total = 0.0
     ssim_total = 0.0
     lpips_total = 0.0
+    adversarial_batches: List[torch.Tensor] = []
 
     for start in range(0, total, chunk_size):
         end = start + chunk_size
@@ -98,6 +99,7 @@ def _evaluate_attack(
         batch_size = int(label_chunk.size(0))
 
         adversarial = attack(image_chunk, label_chunk)
+        adversarial_batches.append(adversarial.detach().cpu())
 
         with torch.no_grad():
             logits = model(adversarial)
@@ -117,17 +119,20 @@ def _evaluate_attack(
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    return {
-        "attack": attack_name,
-        "eps": eps,
-        "alpha": alpha,
-        "steps": steps,
-        "clean_accuracy": clean_accuracy,
-        "asr": 1.0 - (correct / max(total, 1)),
-        "psnr": psnr_total / max(total, 1),
-        "ssim": ssim_total / max(total, 1),
-        "lpips": lpips_total / max(total, 1),
-    }
+    return (
+        {
+            "attack": attack_name,
+            "eps": eps,
+            "alpha": alpha,
+            "steps": steps,
+            "clean_accuracy": clean_accuracy,
+            "asr": 1.0 - (correct / max(total, 1)),
+            "psnr": psnr_total / max(total, 1),
+            "ssim": ssim_total / max(total, 1),
+            "lpips": lpips_total / max(total, 1),
+        },
+        torch.cat(adversarial_batches, dim=0),
+    )
 
 
 def run_attack_arena(
@@ -140,7 +145,7 @@ def run_attack_arena(
     steps: int = 10,
     K: float = 0.1,
     chunk_size: int = 8,
-) -> List[Dict[str, float | str]]:
+) -> Tuple[List[Dict[str, float | str]], Dict[str, torch.Tensor]]:
     attack_device = _attack_device()
     metric_device = _metric_device()
 
@@ -154,8 +159,13 @@ def run_attack_arena(
     lpips_metric = lpips.LPIPS(net="vgg").to(metric_device).eval()
     attack_suite = _build_attack_suite(full_model, eps, alpha, steps, K)
 
-    rows = [
-        _evaluate_attack(
+    rows: List[Dict[str, float | str]] = []
+    adversarial_tensors: Dict[str, torch.Tensor] = {
+        "clean": images.detach().cpu(),
+        "labels": targets.detach().cpu(),
+    }
+    for attack_name, attack in attack_suite.items():
+        row, adversarial = _evaluate_attack(
             attack_name=attack_name,
             attack=attack,
             model=full_model,
@@ -171,12 +181,12 @@ def run_attack_arena(
             alpha=alpha,
             steps=steps,
         )
-        for attack_name, attack in attack_suite.items()
-    ]
+        rows.append(row)
+        adversarial_tensors[attack_name] = adversarial
 
     del full_model, images, targets, psnr_metric, ssim_metric, lpips_metric, attack_suite
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-    return rows
+    return rows, adversarial_tensors

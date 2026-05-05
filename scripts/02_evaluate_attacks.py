@@ -41,8 +41,10 @@ NUM_WORKERS = 4
 WORK_DIR = Path.cwd()
 DATA_ROOT = WORK_DIR / "data"
 CHECKPOINT_DIR = Path("/kaggle/input/notebooks/mostafaanoosha/spectralvfl/AT-SPGD/checkpoints")
-RESULTS_DIR = WORK_DIR / "results" / "csv"
-OUTPUT_CSV = RESULTS_DIR / "02_baseline_arena_metrics.csv"
+RESULTS_DIR = WORK_DIR / "results"
+CSV_DIR = RESULTS_DIR / "csv"
+TENSOR_DIR = RESULTS_DIR / "tensors"
+OUTPUT_CSV = CSV_DIR / "02_baseline_arena_metrics.csv"
 
 
 def load_checkpoint(path: Path) -> Dict[str, Any]:
@@ -75,6 +77,7 @@ def collect_samples(dataset_name: str) -> Tuple[torch.Tensor, torch.Tensor, int]
 # %%
 def run_evaluation() -> pd.DataFrame:
     rows: List[Dict[str, Any]] = []
+    TENSOR_DIR.mkdir(parents=True, exist_ok=True)
     total_runs = len(DATASETS) * len(MODELS)
     run_counter = 0
     start_time = time.time()
@@ -108,18 +111,21 @@ def run_evaluation() -> pd.DataFrame:
             client.eval()
             server.eval()
 
-            attack_rows = run_attack_arena(client, server, test_batch, labels)
+            attack_rows, artifact_tensors = run_attack_arena(client, server, test_batch, labels)
+            artifact_path = TENSOR_DIR / f"02_artifacts_{dataset_name}_{model_name}.pt"
+            torch.save(artifact_tensors, artifact_path)
             for row in attack_rows:
                 rows.append(
                     {
                         "dataset": dataset_name,
                         "model": model_name,
                         "num_classes": num_classes,
+                        "artifact_path": str(artifact_path),
                         **row,
                     }
                 )
 
-            del client, server
+            del client, server, artifact_tensors
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         model_bar.close()
@@ -135,7 +141,7 @@ def run_evaluation() -> pd.DataFrame:
 arena_df = run_evaluation()
 
 # %%
-RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+CSV_DIR.mkdir(parents=True, exist_ok=True)
 arena_df = arena_df.sort_values(["dataset", "model", "attack"]).reset_index(drop=True)
 arena_df.to_csv(OUTPUT_CSV, index=False)
 display(arena_df)

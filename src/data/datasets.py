@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import urllib.error
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -36,30 +34,6 @@ def image_transform(image_size: int = 224) -> transforms.Compose:
     )
 
 
-def _get_fallback_root(dataset_name: str) -> Path:
-    fallback_root = Path("/kaggle/working/fallback_data")
-    fallback_root.mkdir(parents=True, exist_ok=True)
-
-    if dataset_name == "cifar100":
-        target = Path("/kaggle/input/datasets/fedesoriano/cifar100")
-        link_name = fallback_root / "cifar-100-python"
-    elif dataset_name == "cifar10":
-        target = Path("/kaggle/input/datasets/pankrzysiu/cifar10-python")
-        if (target / "cifar-10-batches-py").exists():
-            target = target / "cifar-10-batches-py"
-        link_name = fallback_root / "cifar-10-batches-py"
-    else:
-        return Path("/kaggle/working/data")
-
-    if target.exists() and not link_name.exists():
-        try:
-            os.symlink(target, link_name)
-        except FileExistsError:
-            pass
-
-    return fallback_root
-
-
 def load_image_dataset(
     dataset_name: str,
     split: str,
@@ -71,39 +45,19 @@ def load_image_dataset(
     transform = image_transform(image_size=image_size)
 
     if name == "cifar10":
-        try:
-            dataset = datasets.CIFAR10(
-                root=root,
-                train=split == "train",
-                download=True,
-                transform=transform,
-            )
-        except Exception:
-            print(f"Official download failed for {name}. Using symlink fallback...")
-            fallback_root = _get_fallback_root(name)
-            dataset = datasets.CIFAR10(
-                root=fallback_root,
-                train=split == "train",
-                download=False,
-                transform=transform,
-            )
+        dataset = datasets.CIFAR10(
+            root=root,
+            train=split == "train",
+            download=True,
+            transform=transform,
+        )
     elif name == "cifar100":
-        try:
-            dataset = datasets.CIFAR100(
-                root=root,
-                train=split == "train",
-                download=True,
-                transform=transform,
-            )
-        except Exception:
-            print(f"Official download failed for {name}. Using symlink fallback...")
-            fallback_root = _get_fallback_root(name)
-            dataset = datasets.CIFAR100(
-                root=fallback_root,
-                train=split == "train",
-                download=False,
-                transform=transform,
-            )
+        dataset = datasets.CIFAR100(
+            root=root,
+            train=split == "train",
+            download=True,
+            transform=transform,
+        )
     elif name == "svhn":
         dataset = datasets.SVHN(
             root=root,
