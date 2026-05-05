@@ -52,20 +52,37 @@ from src.visualization.plots import (
     plot_pareto_frontier_panel,
 )
 
-# ==========================================
-# 1. CORE SETUP & DYNAMIC ARTIFACT GENERATOR
-# ==========================================
+WORK_DIR = Path.cwd()
+SEARCH_ROOTS = [WORK_DIR, Path("/kaggle/input")]
+
+
+def resolve_artifact_directory(local_directory: Path, filename_pattern: str) -> Path:
+    if local_directory.exists() and any(local_directory.glob(filename_pattern)):
+        return local_directory
+
+    for root in SEARCH_ROOTS:
+        if not root.exists():
+            continue
+        match = next(root.rglob(filename_pattern), None)
+        if match is not None:
+            return match.parent
+
+    raise FileNotFoundError(
+        f"Unable to locate files matching {filename_pattern!r}. "
+        "Attach Notebook 1 checkpoints and Notebook 2 tensor artifacts as inputs."
+    )
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-CHECKPOINT_DIR = Path("/kaggle/input/notebooks/mostafaanoosha/at-spgd-01-training/AT-SPGD/checkpoints")
-FIGURE_DIR = Path.cwd() / "results" / "figures"
-CSV_DIR = Path.cwd() / "results" / "csv"
-ARTIFACT_DIR = Path.cwd() / "results" / "tensors"
+CHECKPOINT_DIR = resolve_artifact_directory(WORK_DIR / "checkpoints", "01_baseline_*.pth")
+ARTIFACT_DIR = resolve_artifact_directory(WORK_DIR / "results" / "tensors", "02_artifacts_*.pt")
+FIGURE_DIR = WORK_DIR / "results" / "figures"
+CSV_DIR = WORK_DIR / "results" / "csv"
 MULTIPAGE_PDF = FIGURE_DIR / "03_all_plots.pdf"
 FIGURE_DIR.mkdir(parents=True, exist_ok=True)
 CSV_DIR.mkdir(parents=True, exist_ok=True)
 pdf_export = PdfPages(MULTIPAGE_PDF)
 
-
+# %%
 def _denormalize(images: torch.Tensor) -> torch.Tensor:
     if float(images.min()) >= 0.0 and float(images.max()) <= 1.0:
         return images.clamp(0.0, 1.0)
@@ -139,14 +156,10 @@ def export_page(fig: Figure) -> None:
 
 
 # %%
-# ==========================================
-# 2. NOISE MAGNIFICATION & GRAD-CAM
-# ==========================================
 VIS_DATASET = "gtsrb"
 VIS_MODEL = "resnet18"
 NUM_VIS_SAMPLES = int(MAGNIFIED_NOISE_CONFIG.get("num_samples", 5))
 
-print(f"Loading visual artifacts for {VIS_DATASET} / {VIS_MODEL}...")
 vis_dict = load_saved_artifacts(VIS_DATASET, VIS_MODEL, num_samples=NUM_VIS_SAMPLES)
 full_model = build_vfl_model(VIS_DATASET, VIS_MODEL)
 
@@ -162,9 +175,6 @@ if torch.cuda.is_available():
 
 
 # %%
-# ==========================================
-# 3. RADIAL ENERGY PROFILES
-# ==========================================
 ENERGY_DATASETS = RADIAL_ENERGY_CONFIG["datasets"]
 ENERGY_MODEL_SEQUENCE = RADIAL_ENERGY_CONFIG["model_sequence"]
 ENERGY_MODEL_LABELS = RADIAL_ENERGY_CONFIG["model_labels"]
@@ -177,8 +187,6 @@ def radial_panel_label(dataset_name: str, model_name: str) -> str:
     dataset_label = ENERGY_DATASET_LABELS.get(dataset_name, dataset_name.upper())
     return f"{model_label} | {dataset_label}"
 
-
-print(f"Loading Radial Energy artifacts ({ENERGY_SAMPLES} samples per model/dataset)...")
 
 radial_panel_artifacts: dict[str, list[dict]] = {}
 for dataset_name in ENERGY_DATASETS:
@@ -194,9 +202,6 @@ plt.close(fig_energy)
 
 
 # %%
-# ==========================================
-# 4. PARETO FRONTIER
-# ==========================================
 PARETO_SAMPLES = 64
 PARETO_DATASETS = PARETO_FRONTIER_CONFIG["datasets"]
 PARETO_MODEL_SEQUENCE = PARETO_FRONTIER_CONFIG["model_sequence"]
@@ -211,7 +216,6 @@ def pareto_panel_label(dataset_name: str, model_name: str) -> str:
 
 
 def run_pareto_sweep(dataset_name: str, model_name: str) -> list[dict]:
-    print(f"Running Pareto Grid Search for {dataset_name} / {model_name}...")
     model = build_vfl_model(dataset_name, model_name)
     images, labels = get_clean_batch(dataset_name, PARETO_SAMPLES)
     images, labels = images.to(device), labels.to(device)
@@ -260,9 +264,6 @@ plt.close(fig_pareto)
 
 
 # %%
-# ==========================================
-# 5. JPEG COMPRESSION
-# ==========================================
 JPEG_DATASETS = JPEG_COMPRESSION_CONFIG["datasets"]
 JPEG_MODELS = JPEG_COMPRESSION_CONFIG["models"]
 JPEG_QUALITIES = JPEG_COMPRESSION_CONFIG["jpeg_qualities"]
@@ -282,7 +283,6 @@ def apply_jpeg_batch(images: torch.Tensor, quality: int) -> torch.Tensor:
 
 
 def compute_jpeg_asr_curve(dataset_name: str, model_name: str) -> list[float]:
-    print(f"Running JPEG Compression for {dataset_name} / {model_name}...")
     model = build_vfl_model(dataset_name, model_name)
     artifact = load_saved_artifacts(dataset_name, model_name, num_samples=32)
 
@@ -325,9 +325,6 @@ for dataset_name, model_curves in jpeg_curves.items():
 
 
 # %%
-# ==========================================
-# 6. BLUR AND RESIZE DEFENSES
-# ==========================================
 GAUSSIAN_DATASETS = GAUSSIAN_BLUR_CONFIG["datasets"]
 GAUSSIAN_MODEL_GROUPS = GAUSSIAN_BLUR_CONFIG["model_groups"]
 GAUSSIAN_ATTACK_ORDER = GAUSSIAN_BLUR_CONFIG["attack_order"]
@@ -382,7 +379,6 @@ def compute_blur_resize_rows() -> pd.DataFrame:
     for model_group, model_names in GAUSSIAN_MODEL_GROUPS.items():
         for dataset_name in GAUSSIAN_DATASETS:
             for model_name in model_names:
-                print(f"Running Blur/Resize Defenses for {dataset_name} / {model_name}...")
                 model = build_vfl_model(dataset_name, model_name)
                 artifact = load_saved_artifacts(dataset_name, model_name, num_samples=GAUSSIAN_SAMPLES)
                 labels = artifact["labels"].to(device)

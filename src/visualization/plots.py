@@ -162,7 +162,7 @@ PARETO_FRONTIER_CONFIG = {
     },
     "k_ratios": [0.01, 0.02, 0.03, 0.04, 0.05, 0.07, 0.1],
     "alpha_multipliers": [0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 1.0, 1.5],
-    "steps_sweep": [1, 2, 3, 8],
+    "steps_sweep": [10],
     "epsilon": 8.0 / 255.0,
     "suboptimal_color": "lightgray",
     "suboptimal_alpha": 1.0,
