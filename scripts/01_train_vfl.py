@@ -81,6 +81,9 @@ def run_experiments() -> pd.DataFrame:
                 device=device,
             )
             rows.append(row)
+            transfer_file = Path(row["transfer_file"])
+            if transfer_file.exists():
+                print(f"Transfer batch saved: {transfer_file}")
 
     if torch.cuda.is_available():
         torch.cuda.empty_cache()

@@ -29,7 +29,7 @@ def default_data_root() -> Path:
 def image_transform(image_size: int = 224) -> transforms.Compose:
     return transforms.Compose(
         [
-            transforms.Resize((image_size, image_size)),
+            transforms.Resize((image_size, image_size), interpolation=transforms.InterpolationMode.BICUBIC),
             transforms.ToTensor(),
             transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ]

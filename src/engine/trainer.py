@@ -129,6 +129,7 @@ def save_checkpoint(
     fold_index: int,
     num_classes: int,
     metrics: Dict[str, float],
+    attack_test_data: Optional[Dict[str, torch.Tensor]] = None,
 ) -> None:
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
@@ -143,6 +144,35 @@ def save_checkpoint(
         },
         checkpoint_path,
     )
+    if attack_test_data is not None:
+        transfer_path = checkpoint_path.parent / f"01_transfer_{dataset_name}_{model_name}.pt"
+        torch.save(
+            {
+                "test_batch": attack_test_data["images"].detach().cpu(),
+                "labels": attack_test_data["labels"].detach().cpu(),
+                "clean_metrics": metrics,
+            },
+            transfer_path,
+        )
+
+
+def collect_attack_test_data(data_loader: DataLoader, max_samples: int = 512) -> Dict[str, torch.Tensor]:
+    image_batches: List[torch.Tensor] = []
+    label_batches: List[torch.Tensor] = []
+    total_samples = 0
+
+    for images, labels in data_loader:
+        remaining = max_samples - total_samples
+        if remaining <= 0:
+            break
+        image_batches.append(images[:remaining].detach().cpu())
+        label_batches.append(labels[:remaining].detach().cpu())
+        total_samples += min(int(images.size(0)), remaining)
+
+    return {
+        "images": torch.cat(image_batches, dim=0),
+        "labels": torch.cat(label_batches, dim=0),
+    }
 
 
 def cleanup_fold() -> None:
@@ -167,6 +197,7 @@ def run_standard_training(
     set_seed(seed)
     run_device = device or default_device()
     best_checkpoint = checkpoint_dir / f"01_baseline_{dataset_name}_{model_name}.pth"
+    transfer_path = checkpoint_dir / f"01_transfer_{dataset_name}_{model_name}.pt"
 
     train_loader, val_loader, num_classes = get_dataloaders(
         dataset_name=dataset_name,
@@ -195,6 +226,7 @@ def run_standard_training(
         num_classes=num_classes,
         device=run_device,
     )
+    attack_test_data = collect_attack_test_data(val_loader, max_samples=512)
 
     save_checkpoint(
         checkpoint_path=best_checkpoint,
@@ -205,9 +237,10 @@ def run_standard_training(
         fold_index=0,
         num_classes=num_classes,
         metrics=metrics,
+        attack_test_data=attack_test_data,
     )
 
-    del image_client, vfl_server, train_loader, val_loader
+    del image_client, vfl_server, train_loader, val_loader, attack_test_data
     cleanup_fold()
 
     return {
@@ -215,5 +248,6 @@ def run_standard_training(
         "model": model_name,
         "num_classes": num_classes,
         "best_checkpoint": str(best_checkpoint),
+        "transfer_file": str(transfer_path),
         **metrics,
     }

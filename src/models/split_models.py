@@ -67,6 +67,11 @@ class ImageClient(nn.Module):
             features = features.flatten(1)
         return self.projection(features)
 
+    def train(self, mode: bool = True) -> ImageClient:
+        super().train(mode)
+        self.backbone.eval()
+        return self
+
 
 class VFLServer(nn.Module):
     def __init__(self, emb_dim: int, num_classes: int, hidden: int = 256) -> None:
