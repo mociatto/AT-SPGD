@@ -35,7 +35,7 @@ The backend modules in `src/` define the canonical model, data, attack, evaluati
 
 Reviewer-facing notebooks are exported from the same script executions on Kaggle, including the results, tables, and plots, and placed in the project root:
 
-- [at-spgd-01-training.ipynb](./!at-spgd-01-training.ipynb)
+- [at-spgd-01-training.ipynb](./at-spgd-01-training.ipynb)
 - [at-spgd-02-attack.ipynb](./at-spgd-02-attack.ipynb)
 - [at-spgd-03-analyze.ipynb](./at-spgd-03-analyze.ipynb)
 
