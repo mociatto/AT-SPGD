@@ -10,7 +10,7 @@
 !scripts/**
 !at-spgd-01-training.ipynb
 !at-spgd-02-attack.ipynb
-!at-spgd-03-analyze.ipynb
+!at-spgd-03-analysis.ipynb
 
 # Python caches and build artifacts.
 __pycache__/

@@ -45,7 +45,7 @@ Reviewer-facing notebooks are exported from the same script executions on Kaggle
 
 - [at-spgd-01-training.ipynb](./at-spgd-01-training.ipynb)
 - [at-spgd-02-attack.ipynb](./at-spgd-02-attack.ipynb)
-- [at-spgd-03-analyze.ipynb](./at-spgd-03-analyze.ipynb)
+- [at-spgd-03-analysis.ipynb](./at-spgd-03-analysis.ipynb)
 
 These notebooks are intended to mirror the corresponding scripts in `scripts/` while providing an interactive execution record for review.
 
