@@ -3,7 +3,7 @@
 This repository contains the reproducibility package for the paper:
 
 **Frequency-Adaptive Spectral Evasion for Split-Learning Inference**  
-Paper link: **[review manuscript link placeholder](https://example.com)**
+Paper link: **[Manuscript link to be shared after peer review](https://example.com)**
 
 The codebase implements a modular split-learning inference pipeline for evaluating frequency-adaptive adversarial evasion against image backbones. It separates reusable backend components in `src/` from notebook-style execution scripts in `scripts/`, so reviewers can inspect the method implementation, reproduce the quantitative results, and regenerate the paper figures from the same code path.
 
