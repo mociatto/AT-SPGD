@@ -28,6 +28,7 @@ import torch
 import torchvision.transforms.functional as TF
 from IPython.display import Image as IPythonImage
 from IPython.display import display
+from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.figure import Figure
 from PIL import Image
 
@@ -59,8 +60,10 @@ CHECKPOINT_DIR = Path("/kaggle/input/notebooks/mostafaanoosha/at-spgd-01-trainin
 FIGURE_DIR = Path.cwd() / "results" / "figures"
 CSV_DIR = Path.cwd() / "results" / "csv"
 ARTIFACT_DIR = Path.cwd() / "results" / "tensors"
+MULTIPAGE_PDF = FIGURE_DIR / "03_all_plots.pdf"
 FIGURE_DIR.mkdir(parents=True, exist_ok=True)
 CSV_DIR.mkdir(parents=True, exist_ok=True)
+pdf_export = PdfPages(MULTIPAGE_PDF)
 
 
 def _denormalize(images: torch.Tensor) -> torch.Tensor:
@@ -131,6 +134,10 @@ def display_preview(fig: Figure, config: dict) -> None:
     display(IPythonImage(data=preview_buffer.getvalue(), width=config.get("display_width_px", 800)))
 
 
+def export_page(fig: Figure) -> None:
+    pdf_export.savefig(fig, bbox_inches="tight")
+
+
 # %%
 # ==========================================
 # 2. NOISE MAGNIFICATION & GRAD-CAM
@@ -145,11 +152,7 @@ full_model = build_vfl_model(VIS_DATASET, VIS_MODEL)
 
 for i in range(NUM_VIS_SAMPLES):
     fig_sample = plot_noise_gradcam_sample(full_model, VIS_MODEL, vis_dict, sample_idx=i)
-    fig_sample.savefig(
-        FIGURE_DIR / f"03_noise_gradcam_sample_{i}.pdf",
-        bbox_inches="tight",
-        dpi=max(MAGNIFIED_NOISE_CONFIG.get("save_dpi", 300), GRADCAM_CONTOUR_CONFIG.get("save_dpi", 300)),
-    )
+    export_page(fig_sample)
     display_preview(fig_sample, MAGNIFIED_NOISE_CONFIG)
     plt.close(fig_sample)
 
@@ -163,7 +166,7 @@ if torch.cuda.is_available():
 # 3. RADIAL ENERGY PROFILES
 # ==========================================
 ENERGY_DATASETS = RADIAL_ENERGY_CONFIG["datasets"]
-ENERGY_MODEL_PAIRS = RADIAL_ENERGY_CONFIG["model_pairs"]
+ENERGY_MODEL_SEQUENCE = RADIAL_ENERGY_CONFIG["model_sequence"]
 ENERGY_MODEL_LABELS = RADIAL_ENERGY_CONFIG["model_labels"]
 ENERGY_DATASET_LABELS = RADIAL_ENERGY_CONFIG["dataset_labels"]
 ENERGY_SAMPLES = int(RADIAL_ENERGY_CONFIG.get("samples_per_case", 16))
@@ -177,24 +180,17 @@ def radial_panel_label(dataset_name: str, model_name: str) -> str:
 
 print(f"Loading Radial Energy artifacts ({ENERGY_SAMPLES} samples per model/dataset)...")
 
+radial_panel_artifacts: dict[str, list[dict]] = {}
 for dataset_name in ENERGY_DATASETS:
-    for row_idx, (cnn_model, transformer_model) in enumerate(ENERGY_MODEL_PAIRS, start=1):
-        row_panels = {
-            radial_panel_label(dataset_name, cnn_model): [
-                load_saved_artifacts(dataset_name, cnn_model, num_samples=ENERGY_SAMPLES)
-            ],
-            radial_panel_label(dataset_name, transformer_model): [
-                load_saved_artifacts(dataset_name, transformer_model, num_samples=ENERGY_SAMPLES)
-            ],
-        }
-        fig_energy = plot_average_radial_energy_comparison(row_panels)
-        fig_energy.savefig(
-            FIGURE_DIR / f"03_radial_energy_{dataset_name}_row_{row_idx}_{cnn_model}_{transformer_model}.pdf",
-            bbox_inches="tight",
-            dpi=RADIAL_ENERGY_CONFIG.get("save_dpi", 300),
-        )
-        display_preview(fig_energy, RADIAL_ENERGY_CONFIG)
-        plt.close(fig_energy)
+    for model_name in ENERGY_MODEL_SEQUENCE:
+        radial_panel_artifacts[radial_panel_label(dataset_name, model_name)] = [
+            load_saved_artifacts(dataset_name, model_name, num_samples=ENERGY_SAMPLES)
+        ]
+
+fig_energy = plot_average_radial_energy_comparison(radial_panel_artifacts)
+export_page(fig_energy)
+display_preview(fig_energy, RADIAL_ENERGY_CONFIG)
+plt.close(fig_energy)
 
 
 # %%
@@ -203,7 +199,7 @@ for dataset_name in ENERGY_DATASETS:
 # ==========================================
 PARETO_SAMPLES = 64
 PARETO_DATASETS = PARETO_FRONTIER_CONFIG["datasets"]
-PARETO_MODEL_PAIRS = PARETO_FRONTIER_CONFIG["model_pairs"]
+PARETO_MODEL_SEQUENCE = PARETO_FRONTIER_CONFIG["model_sequence"]
 PARETO_MODEL_LABELS = PARETO_FRONTIER_CONFIG["model_labels"]
 PARETO_DATASET_LABELS = PARETO_FRONTIER_CONFIG["dataset_labels"]
 
@@ -249,20 +245,18 @@ def run_pareto_sweep(dataset_name: str, model_name: str) -> list[dict]:
     return results
 
 
+pareto_panel_results: dict[str, list[dict]] = {}
 for dataset_name in PARETO_DATASETS:
-    for row_idx, (cnn_model, transformer_model) in enumerate(PARETO_MODEL_PAIRS, start=1):
-        row_results = {
-            pareto_panel_label(dataset_name, cnn_model): run_pareto_sweep(dataset_name, cnn_model),
-            pareto_panel_label(dataset_name, transformer_model): run_pareto_sweep(dataset_name, transformer_model),
-        }
-        fig_pareto = plot_pareto_frontier_comparison(row_results)
-        fig_pareto.savefig(
-            FIGURE_DIR / f"03_pareto_frontier_{dataset_name}_row_{row_idx}_{cnn_model}_{transformer_model}.pdf",
-            bbox_inches="tight",
-            dpi=PARETO_FRONTIER_CONFIG.get("save_dpi", 300),
+    for model_name in PARETO_MODEL_SEQUENCE:
+        pareto_panel_results[pareto_panel_label(dataset_name, model_name)] = run_pareto_sweep(
+            dataset_name,
+            model_name,
         )
-        display_preview(fig_pareto, PARETO_FRONTIER_CONFIG)
-        plt.close(fig_pareto)
+
+fig_pareto = plot_pareto_frontier_comparison(pareto_panel_results)
+export_page(fig_pareto)
+display_preview(fig_pareto, PARETO_FRONTIER_CONFIG)
+plt.close(fig_pareto)
 
 
 # %%
@@ -320,21 +314,13 @@ jpeg_curves = {
 }
 
 fig_jpeg = plot_jpeg_compression_comparison(jpeg_curves)
-fig_jpeg.savefig(
-    FIGURE_DIR / "03_jpeg_compression.pdf",
-    bbox_inches="tight",
-    dpi=JPEG_COMPRESSION_CONFIG.get("save_dpi", 300),
-)
+export_page(fig_jpeg)
 display_preview(fig_jpeg, {**JPEG_COMPRESSION_CONFIG, "display_width_px": 800})
 plt.close(fig_jpeg)
 
 for dataset_name, model_curves in jpeg_curves.items():
     fig_panel = plot_jpeg_compression_panel(dataset_name, model_curves)
-    fig_panel.savefig(
-        FIGURE_DIR / f"03_jpeg_compression_{dataset_name}.pdf",
-        bbox_inches="tight",
-        dpi=JPEG_COMPRESSION_CONFIG.get("save_dpi", 300),
-    )
+    export_page(fig_panel)
     plt.close(fig_panel)
 
 
@@ -429,18 +415,36 @@ def compute_blur_resize_rows() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def summarize_defense_metrics(metrics_df: pd.DataFrame) -> dict[str, dict[str, dict[str, float]]]:
-    panel_metrics = {}
-    for model_group in GAUSSIAN_MODEL_GROUPS:
-        group_df = metrics_df[metrics_df["model_group"] == model_group]
-        attack_metrics = {}
-        for attack_name in GAUSSIAN_ATTACK_ORDER:
-            attack_df = group_df[group_df["attack"] == attack_name]
-            attack_metrics[attack_name] = {
-                "blur_asr": float(attack_df["blur_asr"].mean()),
-                "resize_asr": float(attack_df["resize_asr"].mean()),
+def summarize_defense_metrics(metrics_df: pd.DataFrame) -> dict[str, dict[str, object]]:
+    panel_metrics: dict[str, dict[str, object]] = {}
+    model_labels = RADIAL_ENERGY_CONFIG["model_labels"]
+    dataset_labels = RADIAL_ENERGY_CONFIG["dataset_labels"]
+    model_sequence = GAUSSIAN_BLUR_CONFIG["model_sequence"]
+    group_lookup = {
+        model_name: ("cnn" if model_name in set(GAUSSIAN_MODEL_GROUPS["CNN"]) else "transformer")
+        for model_name in model_sequence
+    }
+    for dataset_name in GAUSSIAN_DATASETS:
+        for model_name in model_sequence:
+            group_key = group_lookup[model_name]
+            model_group = "CNN" if group_key == "cnn" else "Transformer"
+            panel_df = metrics_df[
+                (metrics_df["model_group"] == model_group)
+                & (metrics_df["dataset"] == dataset_name)
+                & (metrics_df["model"] == model_name)
+            ]
+            attack_metrics = {}
+            for attack_name in GAUSSIAN_ATTACK_ORDER:
+                attack_df = panel_df[panel_df["attack"] == attack_name]
+                attack_metrics[attack_name] = {
+                    "blur_asr": float(attack_df["blur_asr"].mean()),
+                    "resize_asr": float(attack_df["resize_asr"].mean()),
+                }
+            panel_title = f"{model_labels.get(model_name, model_name)} | {dataset_labels.get(dataset_name, dataset_name.upper())}"
+            panel_metrics[panel_title] = {
+                "group": group_key,
+                "attack_metrics": attack_metrics,
             }
-        panel_metrics[model_group] = attack_metrics
     return panel_metrics
 
 
@@ -451,11 +455,8 @@ defense_df.to_csv(GAUSSIAN_OUTPUT_CSV, index=False)
 defense_panel_metrics = summarize_defense_metrics(defense_df)
 
 fig_gaussian = plot_gaussian_blur_comparison(defense_panel_metrics)
-fig_gaussian.savefig(
-    FIGURE_DIR / "03_blur_resize_defense.pdf",
-    bbox_inches="tight",
-    dpi=GAUSSIAN_BLUR_CONFIG.get("save_dpi", 300),
-)
+export_page(fig_gaussian)
 display_preview(fig_gaussian, GAUSSIAN_BLUR_CONFIG)
 plt.close(fig_gaussian)
 display(defense_df)
+pdf_export.close()

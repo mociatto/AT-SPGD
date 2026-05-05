@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -61,13 +61,16 @@ RADIAL_ENERGY_CONFIG = {
     "font_family": "serif",
     "axes_label_fontsize": 10,
     "title_fontsize": 10,
-    "title_pad": 8,
+    "title_pad": 40,
     "tick_label_fontsize": 10,
     "legend_fontsize": 8,
-    "legend_loc": "upper right",
+    "legend_loc": "lower center",
+    "legend_bbox_to_anchor": (0.5, 1.02),
+    "legend_ncol": 3,
     "figure_dpi": 100,
     "save_dpi": 300,
-    "display_width_px": 800,
+    "display_width_px": 1280,
+    "comparison_ncols": 4,
     "figsize": (4.5, 3.5),
     "figsize_scale": 1.0,
     "datasets": ["cifar10", "cifar100", "svhn", "gtsrb"],
@@ -77,6 +80,12 @@ RADIAL_ENERGY_CONFIG = {
     "model_pairs": [
         ("resnet18", "swin_tiny_patch4_window7_224"),
         ("mobilenet_v2", "vit_base_patch16_224"),
+    ],
+    "model_sequence": [
+        "resnet18",
+        "mobilenet_v2",
+        "swin_tiny_patch4_window7_224",
+        "vit_base_patch16_224",
     ],
     "model_labels": {
         "resnet18": "ResNet-18",
@@ -110,15 +119,19 @@ PARETO_FRONTIER_CONFIG = {
     "font_family": "serif",
     "axes_label_fontsize": 10,
     "title_fontsize": 10,
-    "title_pad": 8,
+    "title_pad": 30,
     "tick_label_fontsize": 10,
-    "legend_fontsize": 10,
+    "legend_fontsize": 8,
+    "legend_loc": "lower center",
+    "legend_bbox_to_anchor": (0.5, 1.02),
+    "legend_ncol": 2,
     "annotation_fontsize": 8,
     "figure_dpi": 100,
     "save_dpi": 300,
     "figsize": (4.5, 3.5),
     "figsize_scale": 1.0,
-    "display_width_px": 800,
+    "display_width_px": 1280,
+    "comparison_ncols": 4,
     "cnn_dataset": "gtsrb",
     "cnn_model": "resnet18",
     "transformer_dataset": "gtsrb",
@@ -128,6 +141,12 @@ PARETO_FRONTIER_CONFIG = {
     "model_pairs": [
         ("resnet18", "swin_tiny_patch4_window7_224"),
         ("mobilenet_v2", "vit_base_patch16_224"),
+    ],
+    "model_sequence": [
+        "resnet18",
+        "mobilenet_v2",
+        "swin_tiny_patch4_window7_224",
+        "vit_base_patch16_224",
     ],
     "model_labels": {
         "resnet18": "ResNet-18",
@@ -161,14 +180,18 @@ PARETO_FRONTIER_CONFIG = {
 JPEG_COMPRESSION_CONFIG = {
     "font_family": "serif",
     "axes_label_fontsize": 10,
+    "title_pad": 40,
     "tick_label_fontsize": 10,
     "legend_fontsize": 8,
-    "legend_loc": "lower left",
+    "legend_loc": "lower center",
+    "legend_bbox_to_anchor": (0.5, 1.02),
+    "legend_ncol": 2,
     "figure_dpi": 100,
     "save_dpi": 300,
     "figsize": (4.5, 3.5),
     "figsize_scale": 1.0,
     "display_width_px": 800,
+    "comparison_ncols": 4,
     "datasets": ["cifar10", "cifar100", "svhn", "gtsrb"],
     "dataset_labels": {
         "cifar10": "CIFAR-10",
@@ -176,7 +199,7 @@ JPEG_COMPRESSION_CONFIG = {
         "svhn": "SVHN",
         "gtsrb": "GTSRB",
     },
-    "models": ["swin_tiny_patch4_window7_224", "resnet18", "mobilenet_v2", "vit_base_patch16_224"],
+    "models": ["resnet18", "mobilenet_v2", "swin_tiny_patch4_window7_224", "vit_base_patch16_224"],
     "model_labels": {
         "swin_tiny_patch16_224": "Swin-Tiny",
         "swin_tiny_patch4_window7_224": "Swin-Tiny",
@@ -202,20 +225,29 @@ GAUSSIAN_BLUR_CONFIG = {
     "font_family": "serif",
     "axes_label_fontsize": 10,
     "title_fontsize": 10,
-    "title_pad": 8,
+    "title_pad": 30,
     "tick_label_fontsize": 10,
     "legend_fontsize": 8,
-    "legend_loc": "lower left",
+    "legend_loc": "lower center",
+    "legend_bbox_to_anchor": (0.5, 1.02),
+    "legend_ncol": 2,
     "figure_dpi": 100,
     "save_dpi": 300,
     "figsize": (4.5, 3.5),
     "figsize_scale": 1.0,
-    "display_width_px": 800,
+    "display_width_px": 1280,
+    "comparison_ncols": 4,
     "datasets": ["cifar10", "cifar100", "svhn", "gtsrb"],
     "model_groups": {
         "CNN": ["resnet18", "mobilenet_v2"],
         "Transformer": ["swin_tiny_patch4_window7_224", "vit_base_patch16_224"],
     },
+    "model_sequence": [
+        "resnet18",
+        "mobilenet_v2",
+        "swin_tiny_patch4_window7_224",
+        "vit_base_patch16_224",
+    ],
     "num_samples": 32,
     "blur_kernel_size": 5,
     "blur_sigma": 1.0,
@@ -229,13 +261,16 @@ GAUSSIAN_BLUR_CONFIG = {
         "AT-SPGD (Ours)": "AT-SPGD",
     },
     "defense_colors": {
-        "CNN": {"blur_asr": "#FFBE0B", "resize_asr": "#FB5607"},
-        "Transformer": {"blur_asr": "#8338EC", "resize_asr": "#3A86FF"},
+        "cnn": {"blur_asr": "#FFBE0B", "resize_asr": "#FB5607"},
+        "transformer": {"blur_asr": "#8338EC", "resize_asr": "#3A86FF"},
     },
     "blur_label": "Gaussian Blur",
     "resize_label": "Resize Defense",
-    "bar_width": 0.34,
+    "bar_width": 0.40,
     "bar_alpha": 1.0,
+    "bar_value_fontsize": 8,
+    "bar_value_offset": 0.8,
+    "bar_value_as_fraction": True,
     "x_label": "Attack Method",
     "y_label": "Attack Success Rate (%)",
     "y_limit": (0.0, 100.0),
@@ -435,6 +470,8 @@ def plot_radial_energy(vis_dict: dict) -> Figure:
     ax.tick_params(axis="both", labelsize=RADIAL_ENERGY_CONFIG["tick_label_fontsize"])
     ax.legend(
         loc=RADIAL_ENERGY_CONFIG["legend_loc"],
+        bbox_to_anchor=RADIAL_ENERGY_CONFIG["legend_bbox_to_anchor"],
+        ncol=RADIAL_ENERGY_CONFIG["legend_ncol"],
         fontsize=RADIAL_ENERGY_CONFIG["legend_fontsize"],
         frameon=True,
     )
@@ -517,6 +554,8 @@ def _draw_average_radial_energy_panel(ax, averaged_profiles: Dict[str, np.ndarra
     ax.tick_params(axis="both", labelsize=RADIAL_ENERGY_CONFIG["tick_label_fontsize"])
     ax.legend(
         loc=RADIAL_ENERGY_CONFIG["legend_loc"],
+        bbox_to_anchor=RADIAL_ENERGY_CONFIG["legend_bbox_to_anchor"],
+        ncol=RADIAL_ENERGY_CONFIG["legend_ncol"],
         fontsize=RADIAL_ENERGY_CONFIG["legend_fontsize"],
         frameon=True,
     )
@@ -544,16 +583,23 @@ def plot_average_radial_energy_comparison(panel_vis_dicts: Dict[str, list[dict]]
     plt.rcParams["font.family"] = RADIAL_ENERGY_CONFIG["font_family"]
     scale = float(RADIAL_ENERGY_CONFIG["figsize_scale"])
     width, height = RADIAL_ENERGY_CONFIG["figsize"]
+    panel_items = list(panel_vis_dicts.items())
+    column_count = int(RADIAL_ENERGY_CONFIG.get("comparison_ncols", 4))
+    row_count = (len(panel_items) + column_count - 1) // column_count
     fig, axes = plt.subplots(
-        1,
-        len(panel_vis_dicts),
-        figsize=(width * len(panel_vis_dicts) * scale, height * scale),
+        row_count,
+        column_count,
+        figsize=(width * column_count * scale, height * row_count * scale),
         dpi=RADIAL_ENERGY_CONFIG["figure_dpi"],
         squeeze=False,
     )
 
-    for ax, (panel_label, vis_dicts) in zip(axes[0], panel_vis_dicts.items()):
+    flat_axes = axes.ravel()
+    for ax, (panel_label, vis_dicts) in zip(flat_axes, panel_items):
         _draw_average_radial_energy_panel(ax, _average_radial_profiles(vis_dicts), panel_label=panel_label)
+
+    for ax in flat_axes[len(panel_items) :]:
+        ax.axis("off")
 
     plt.tight_layout()
     return fig
@@ -652,7 +698,9 @@ def _draw_pareto_frontier_panel(ax, results: list[dict], panel_label: str | None
     ax.tick_params(axis="both", labelsize=PARETO_FRONTIER_CONFIG["tick_label_fontsize"])
     ax.grid(True, linestyle="--", alpha=0.45)
     ax.legend(
-        loc="lower right",
+        loc=PARETO_FRONTIER_CONFIG["legend_loc"],
+        bbox_to_anchor=PARETO_FRONTIER_CONFIG["legend_bbox_to_anchor"],
+        ncol=PARETO_FRONTIER_CONFIG["legend_ncol"],
         fontsize=PARETO_FRONTIER_CONFIG["legend_fontsize"],
         frameon=True,
     )
@@ -681,16 +729,23 @@ def plot_pareto_frontier_comparison(panel_results: Dict[str, list[dict]]) -> Fig
     plt.rcParams["font.family"] = PARETO_FRONTIER_CONFIG["font_family"]
     scale = float(PARETO_FRONTIER_CONFIG["figsize_scale"])
     width, height = PARETO_FRONTIER_CONFIG["figsize"]
+    panel_items = list(panel_results.items())
+    column_count = int(PARETO_FRONTIER_CONFIG.get("comparison_ncols", 4))
+    row_count = (len(panel_items) + column_count - 1) // column_count
     fig, axes = plt.subplots(
-        1,
-        len(panel_results),
-        figsize=(width * len(panel_results) * scale, height * scale),
+        row_count,
+        column_count,
+        figsize=(width * column_count * scale, height * row_count * scale),
         dpi=PARETO_FRONTIER_CONFIG["figure_dpi"],
         squeeze=False,
     )
 
-    for ax, (panel_label, results) in zip(axes[0], panel_results.items()):
+    flat_axes = axes.ravel()
+    for ax, (panel_label, results) in zip(flat_axes, panel_items):
         _draw_pareto_frontier_panel(ax, results, panel_label=panel_label)
+
+    for ax in flat_axes[len(panel_items) :]:
+        ax.axis("off")
 
     plt.tight_layout()
     return fig
@@ -720,7 +775,7 @@ def _draw_jpeg_compression_panel(ax, dataset_name: str, model_curves: Dict[str, 
     ax.set_title(
         JPEG_COMPRESSION_CONFIG["dataset_labels"].get(dataset_name, dataset_name),
         fontsize=JPEG_COMPRESSION_CONFIG["axes_label_fontsize"],
-        pad=8,
+        pad=JPEG_COMPRESSION_CONFIG["title_pad"],
     )
     ax.set_xlabel(
         JPEG_COMPRESSION_CONFIG["x_label"],
@@ -736,6 +791,8 @@ def _draw_jpeg_compression_panel(ax, dataset_name: str, model_curves: Dict[str, 
     ax.grid(True, linestyle="--", alpha=0.45)
     ax.legend(
         loc=JPEG_COMPRESSION_CONFIG["legend_loc"],
+        bbox_to_anchor=JPEG_COMPRESSION_CONFIG["legend_bbox_to_anchor"],
+        ncol=JPEG_COMPRESSION_CONFIG["legend_ncol"],
         fontsize=JPEG_COMPRESSION_CONFIG["legend_fontsize"],
         frameon=True,
     )
@@ -764,7 +821,7 @@ def plot_jpeg_compression_comparison(dataset_curves: Dict[str, Dict[str, list[fl
     plt.rcParams["font.family"] = JPEG_COMPRESSION_CONFIG["font_family"]
     scale = float(JPEG_COMPRESSION_CONFIG["figsize_scale"])
     width, height = JPEG_COMPRESSION_CONFIG["figsize"]
-    column_count = 2
+    column_count = int(JPEG_COMPRESSION_CONFIG.get("comparison_ncols", 4))
     row_count = (len(dataset_curves) + column_count - 1) // column_count
     fig, axes = plt.subplots(
         row_count,
@@ -785,16 +842,21 @@ def plot_jpeg_compression_comparison(dataset_curves: Dict[str, Dict[str, list[fl
     return fig
 
 
-def _draw_gaussian_blur_panel(ax, panel_title: str, attack_metrics: Dict[str, Dict[str, float]]) -> None:
+def _draw_gaussian_blur_panel(
+    ax,
+    panel_title: str,
+    attack_metrics: Dict[str, Dict[str, float]],
+    panel_group: str,
+) -> None:
     attack_order = GAUSSIAN_BLUR_CONFIG["attack_order"]
     attack_labels = GAUSSIAN_BLUR_CONFIG["attack_labels"]
-    defense_colors = GAUSSIAN_BLUR_CONFIG["defense_colors"][panel_title]
+    defense_colors = GAUSSIAN_BLUR_CONFIG["defense_colors"][panel_group]
     x_positions = np.arange(len(attack_order))
     bar_width = float(GAUSSIAN_BLUR_CONFIG["bar_width"])
     blur_values = [attack_metrics[attack_name]["blur_asr"] for attack_name in attack_order]
     resize_values = [attack_metrics[attack_name]["resize_asr"] for attack_name in attack_order]
 
-    ax.bar(
+    blur_bars = ax.bar(
         x_positions - bar_width / 2,
         blur_values,
         width=bar_width,
@@ -803,7 +865,7 @@ def _draw_gaussian_blur_panel(ax, panel_title: str, attack_metrics: Dict[str, Di
         zorder=2,
         label=GAUSSIAN_BLUR_CONFIG["blur_label"],
     )
-    ax.bar(
+    resize_bars = ax.bar(
         x_positions + bar_width / 2,
         resize_values,
         width=bar_width,
@@ -812,6 +874,13 @@ def _draw_gaussian_blur_panel(ax, panel_title: str, attack_metrics: Dict[str, Di
         zorder=2,
         label=GAUSSIAN_BLUR_CONFIG["resize_label"],
     )
+    value_offset = float(GAUSSIAN_BLUR_CONFIG["bar_value_offset"])
+    value_fontsize = int(GAUSSIAN_BLUR_CONFIG["bar_value_fontsize"])
+    use_fraction = bool(GAUSSIAN_BLUR_CONFIG["bar_value_as_fraction"])
+    blur_labels = [f"{(value / 100.0) if use_fraction else value:.2f}" for value in blur_values]
+    resize_labels = [f"{(value / 100.0) if use_fraction else value:.2f}" for value in resize_values]
+    ax.bar_label(blur_bars, labels=blur_labels, padding=value_offset, fontsize=value_fontsize)
+    ax.bar_label(resize_bars, labels=resize_labels, padding=value_offset, fontsize=value_fontsize)
 
     ax.set_title(
         panel_title,
@@ -843,6 +912,8 @@ def _draw_gaussian_blur_panel(ax, panel_title: str, attack_metrics: Dict[str, Di
             Patch(facecolor=defense_colors["resize_asr"], label=GAUSSIAN_BLUR_CONFIG["resize_label"]),
         ],
         loc=GAUSSIAN_BLUR_CONFIG["legend_loc"],
+        bbox_to_anchor=GAUSSIAN_BLUR_CONFIG["legend_bbox_to_anchor"],
+        ncol=GAUSSIAN_BLUR_CONFIG["legend_ncol"],
         fontsize=GAUSSIAN_BLUR_CONFIG["legend_fontsize"],
         frameon=True,
     )
@@ -854,20 +925,32 @@ def _draw_gaussian_blur_panel(ax, panel_title: str, attack_metrics: Dict[str, Di
         ax.spines["right"].set_visible(False)
 
 
-def plot_gaussian_blur_comparison(panel_metrics: Dict[str, Dict[str, Dict[str, float]]]) -> Figure:
+def plot_gaussian_blur_comparison(panel_metrics: Dict[str, Dict[str, Any]]) -> Figure:
     plt.rcParams["font.family"] = GAUSSIAN_BLUR_CONFIG["font_family"]
     scale = float(GAUSSIAN_BLUR_CONFIG["figsize_scale"])
     width, height = GAUSSIAN_BLUR_CONFIG["figsize"]
+    panel_items = list(panel_metrics.items())
+    column_count = int(GAUSSIAN_BLUR_CONFIG.get("comparison_ncols", 4))
+    row_count = (len(panel_items) + column_count - 1) // column_count
     fig, axes = plt.subplots(
-        1,
-        len(panel_metrics),
-        figsize=(width * len(panel_metrics) * scale, height * scale),
+        row_count,
+        column_count,
+        figsize=(width * column_count * scale, height * row_count * scale),
         dpi=GAUSSIAN_BLUR_CONFIG["figure_dpi"],
         squeeze=False,
     )
 
-    for ax, (panel_title, attack_metrics) in zip(axes[0], panel_metrics.items()):
-        _draw_gaussian_blur_panel(ax, panel_title, attack_metrics)
+    flat_axes = axes.ravel()
+    for ax, (panel_title, panel_data) in zip(flat_axes, panel_items):
+        _draw_gaussian_blur_panel(
+            ax,
+            panel_title,
+            panel_data["attack_metrics"],
+            panel_group=panel_data["group"],
+        )
+
+    for ax in flat_axes[len(panel_items) :]:
+        ax.axis("off")
 
     plt.tight_layout()
     return fig

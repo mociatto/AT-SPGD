@@ -2,6 +2,7 @@
 
 # Curated project surface.
 !.gitignore
+!README.md
 !src/
 !src/**
 !scripts/
@@ -39,6 +40,7 @@ Thumbs.db
 *.swo
 
 # Generated experiment artifacts.
+preview_visualizations.py
 results/
 checkpoints/
 *.pt
