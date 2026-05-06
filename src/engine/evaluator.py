@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gc
+import warnings
 from typing import Any, Dict, List, Tuple
 
 import lpips
@@ -35,22 +36,20 @@ def _denormalize(images: torch.Tensor) -> torch.Tensor:
 
 
 @torch.no_grad()
-def _clean_accuracy(
+def _clean_predictions(
     model: nn.Module,
     images: torch.Tensor,
-    labels: torch.Tensor,
     chunk_size: int,
-) -> float:
-    correct = 0
-    total = int(labels.size(0))
+) -> torch.Tensor:
+    predictions: List[torch.Tensor] = []
+    total = int(images.size(0))
 
     for start in range(0, total, chunk_size):
         end = start + chunk_size
         logits = model(images[start:end])
-        predictions = logits.argmax(dim=1)
-        correct += int((predictions == labels[start:end]).sum().item())
+        predictions.append(logits.argmax(dim=1).detach())
 
-    return correct / max(total, 1)
+    return torch.cat(predictions, dim=0)
 
 
 def _build_attack_suite(
@@ -75,7 +74,9 @@ def _evaluate_attack(
     model: nn.Module,
     images: torch.Tensor,
     labels: torch.Tensor,
-    clean_accuracy: float,
+    clean_correct_mask: torch.Tensor,
+    clean_correct_count: int,
+    clean_accuracy_on_attack_batch: float,
     psnr_metric: PeakSignalNoiseRatio,
     ssim_metric: StructuralSimilarityIndexMeasure,
     lpips_metric: nn.Module,
@@ -84,19 +85,25 @@ def _evaluate_attack(
     eps: float,
     alpha: float,
     steps: int,
-) -> Tuple[Dict[str, float | str], torch.Tensor]:
-    correct = 0
+) -> Tuple[Dict[str, float | int | str], torch.Tensor]:
+    adv_correct_count = 0
     total = int(labels.size(0))
     psnr_total = 0.0
     ssim_total = 0.0
     lpips_total = 0.0
+    psnr_clean_correct_total = 0.0
+    ssim_clean_correct_total = 0.0
+    lpips_clean_correct_total = 0.0
+    attack_success_count = 0
     adversarial_batches: List[torch.Tensor] = []
 
     for start in range(0, total, chunk_size):
         end = start + chunk_size
         image_chunk = images[start:end]
         label_chunk = labels[start:end]
+        mask_chunk = clean_correct_mask[start:end]
         batch_size = int(label_chunk.size(0))
+        clean_correct_chunk_count = int(mask_chunk.sum().item())
 
         adversarial = attack(image_chunk, label_chunk)
         adversarial_batches.append(adversarial.detach().cpu())
@@ -104,7 +111,8 @@ def _evaluate_attack(
         with torch.no_grad():
             logits = model(adversarial)
             predictions = logits.argmax(dim=1)
-            correct += int((predictions == label_chunk).sum().item())
+            adv_correct_count += int((predictions == label_chunk).sum().item())
+            attack_success_count += int((mask_chunk & (predictions != label_chunk)).sum().item())
 
             clean_metric = image_chunk.to(metric_device)
             adversarial_metric = adversarial.to(metric_device)
@@ -114,10 +122,36 @@ def _evaluate_attack(
                 float(lpips_metric(adversarial_metric * 2 - 1, clean_metric * 2 - 1).mean().item())
                 * batch_size
             )
+            if clean_correct_chunk_count > 0:
+                metric_mask = mask_chunk.to(metric_device)
+                clean_correct_metric = clean_metric[metric_mask]
+                adversarial_clean_correct_metric = adversarial_metric[metric_mask]
+                psnr_clean_correct_total += (
+                    float(psnr_metric(adversarial_clean_correct_metric, clean_correct_metric).item())
+                    * clean_correct_chunk_count
+                )
+                ssim_clean_correct_total += (
+                    float(ssim_metric(adversarial_clean_correct_metric, clean_correct_metric).item())
+                    * clean_correct_chunk_count
+                )
+                lpips_clean_correct_total += (
+                    float(
+                        lpips_metric(
+                            adversarial_clean_correct_metric * 2 - 1,
+                            clean_correct_metric * 2 - 1,
+                        ).mean().item()
+                    )
+                    * clean_correct_chunk_count
+                )
 
-        del adversarial, image_chunk, label_chunk, clean_metric, adversarial_metric, logits
+        del adversarial, image_chunk, label_chunk, mask_chunk, clean_metric, adversarial_metric, logits
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+
+    asr = float("nan") if clean_correct_count == 0 else attack_success_count / clean_correct_count
+    psnr_clean_correct = float("nan") if clean_correct_count == 0 else psnr_clean_correct_total / clean_correct_count
+    ssim_clean_correct = float("nan") if clean_correct_count == 0 else ssim_clean_correct_total / clean_correct_count
+    lpips_clean_correct = float("nan") if clean_correct_count == 0 else lpips_clean_correct_total / clean_correct_count
 
     return (
         {
@@ -125,11 +159,20 @@ def _evaluate_attack(
             "eps": eps,
             "alpha": alpha,
             "steps": steps,
-            "clean_accuracy": clean_accuracy,
-            "asr": 1.0 - (correct / max(total, 1)),
+            "clean_accuracy": clean_accuracy_on_attack_batch,
             "psnr": psnr_total / max(total, 1),
             "ssim": ssim_total / max(total, 1),
             "lpips": lpips_total / max(total, 1),
+            "total_samples": total,
+            "clean_correct_count": clean_correct_count,
+            "clean_accuracy_on_attack_batch": clean_accuracy_on_attack_batch,
+            "adv_correct_count": adv_correct_count,
+            "attack_success_count": attack_success_count,
+            # ASR follows standard evasion evaluation: only clean-correct samples form the denominator.
+            "asr": asr,
+            "psnr_clean_correct": psnr_clean_correct,
+            "ssim_clean_correct": ssim_clean_correct,
+            "lpips_clean_correct": lpips_clean_correct,
         },
         torch.cat(adversarial_batches, dim=0),
     )
@@ -145,7 +188,7 @@ def run_attack_arena(
     steps: int = 10,
     K: float = 0.1,
     chunk_size: int = 8,
-) -> Tuple[List[Dict[str, float | str]], Dict[str, torch.Tensor]]:
+) -> Tuple[List[Dict[str, float | int | str]], Dict[str, torch.Tensor]]:
     attack_device = _attack_device()
     metric_device = _metric_device()
 
@@ -153,13 +196,22 @@ def run_attack_arena(
     images = _denormalize(test_batch.detach().cpu()).to(attack_device)
     targets = labels.detach().long().to(attack_device)
 
-    clean_accuracy = _clean_accuracy(full_model, images, targets, chunk_size)
+    clean_preds = _clean_predictions(full_model, images, chunk_size)
+    clean_correct_mask = clean_preds == targets
+    clean_correct_count = int(clean_correct_mask.sum().item())
+    clean_accuracy_on_attack_batch = clean_correct_count / max(int(targets.size(0)), 1)
+    if clean_correct_count == 0:
+        warnings.warn(
+            "No clean-correct samples found in the attack batch; ASR and clean-correct fidelity metrics are NaN.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
     psnr_metric = PeakSignalNoiseRatio(data_range=1.0).to(metric_device)
     ssim_metric = StructuralSimilarityIndexMeasure(data_range=1.0).to(metric_device)
     lpips_metric = lpips.LPIPS(net="vgg").to(metric_device).eval()
     attack_suite = _build_attack_suite(full_model, eps, alpha, steps, K)
 
-    rows: List[Dict[str, float | str]] = []
+    rows: List[Dict[str, float | int | str]] = []
     adversarial_tensors: Dict[str, torch.Tensor] = {
         "clean": images.detach().cpu(),
         "labels": targets.detach().cpu(),
@@ -171,7 +223,9 @@ def run_attack_arena(
             model=full_model,
             images=images,
             labels=targets,
-            clean_accuracy=clean_accuracy,
+            clean_correct_mask=clean_correct_mask,
+            clean_correct_count=clean_correct_count,
+            clean_accuracy_on_attack_batch=clean_accuracy_on_attack_batch,
             psnr_metric=psnr_metric,
             ssim_metric=ssim_metric,
             lpips_metric=lpips_metric,
@@ -184,7 +238,7 @@ def run_attack_arena(
         rows.append(row)
         adversarial_tensors[attack_name] = adversarial
 
-    del full_model, images, targets, psnr_metric, ssim_metric, lpips_metric, attack_suite
+    del full_model, images, targets, clean_preds, clean_correct_mask, psnr_metric, ssim_metric, lpips_metric, attack_suite
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()

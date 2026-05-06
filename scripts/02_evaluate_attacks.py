@@ -115,6 +115,12 @@ def run_evaluation() -> pd.DataFrame:
             artifact_path = TENSOR_DIR / f"02_artifacts_{dataset_name}_{model_name}.pt"
             torch.save(artifact_tensors, artifact_path)
             for row in attack_rows:
+                tqdm.write(
+                    f"[ASR] Dataset={dataset_name} | Model={model_name} | Attack={row['attack']} | "
+                    f"total={row['total_samples']} | clean_correct={row['clean_correct_count']} | "
+                    f"clean_acc={row['clean_accuracy_on_attack_batch']:.4f} | "
+                    f"success={row['attack_success_count']} | asr={row['asr']:.4f}"
+                )
                 rows.append(
                     {
                         "dataset": dataset_name,

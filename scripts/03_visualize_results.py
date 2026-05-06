@@ -13,6 +13,7 @@ from __future__ import annotations
 # %%
 import io
 import sys
+import warnings
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -106,6 +107,22 @@ def build_vfl_model(dataset_name: str, model_name: str) -> FullVFLModel:
     client.load_state_dict(checkpoint["image_client"])
     server.load_state_dict(checkpoint["vfl_server"])
     return FullVFLModel(client, server, normalize_inputs=True).eval().to(device)
+
+
+@torch.no_grad()
+def clean_correct_mask(model: FullVFLModel, images: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    clean_preds = model(images).argmax(dim=1)
+    return clean_preds == labels
+
+
+def clean_correct_asr(predictions: torch.Tensor, labels: torch.Tensor, mask: torch.Tensor) -> Tuple[float, int]:
+    clean_correct_count = int(mask.sum().item())
+    if clean_correct_count == 0:
+        warnings.warn("No clean-correct samples available; ASR is NaN.", RuntimeWarning, stacklevel=2)
+        return float("nan"), 0
+    # ASR follows standard evasion evaluation: only clean-correct samples form the denominator.
+    success_count = int((mask & (predictions != labels)).sum().item())
+    return (success_count / clean_correct_count) * 100.0, success_count
 
 
 @torch.no_grad()
@@ -219,6 +236,7 @@ def run_pareto_sweep(dataset_name: str, model_name: str) -> list[dict]:
     model = build_vfl_model(dataset_name, model_name)
     images, labels = get_clean_batch(dataset_name, PARETO_SAMPLES)
     images, labels = images.to(device), labels.to(device)
+    mask = clean_correct_mask(model, images, labels)
 
     results = []
     epsilon = float(PARETO_FRONTIER_CONFIG["epsilon"])
@@ -236,14 +254,14 @@ def run_pareto_sweep(dataset_name: str, model_name: str) -> list[dict]:
 
                 with torch.no_grad():
                     logits = model(adversarial)
-                    asr = (logits.argmax(dim=1) != labels).float().mean().item() * 100.0
+                    asr, _ = clean_correct_asr(logits.argmax(dim=1), labels, mask)
                     mse = torch.mean((adversarial - images) ** 2, dim=[1, 2, 3])
                     psnr = (20 * torch.log10(1.0 / torch.sqrt(mse))).mean().item()
 
                 results.append({"k": k, "alpha": alpha_multiplier, "steps": steps, "asr": asr, "psnr": psnr})
                 del attack, adversarial, logits
 
-    del model, images, labels
+    del model, images, labels, mask
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     return results
@@ -291,18 +309,20 @@ def compute_jpeg_asr_curve(dataset_name: str, model_name: str) -> list[float]:
         raise KeyError("No AT-SPGD adversarial tensor found in generated artifact.")
 
     adversarial_images = artifact[attack_key].to(device)
+    clean_images = artifact["clean_images"].to(device)
     labels = artifact["labels"].to(device)
+    mask = clean_correct_mask(model, clean_images, labels)
 
     asr_curve = []
     for quality in JPEG_QUALITIES:
         compressed = apply_jpeg_batch(adversarial_images, quality)
         with torch.no_grad():
             logits = model(compressed)
-            asr = (logits.argmax(dim=1) != labels).float().mean().item() * 100.0
+            asr, _ = clean_correct_asr(logits.argmax(dim=1), labels, mask)
         asr_curve.append(asr)
         del compressed, logits
 
-    del model, artifact, adversarial_images, labels
+    del model, artifact, adversarial_images, clean_images, labels, mask
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     return asr_curve
@@ -381,7 +401,11 @@ def compute_blur_resize_rows() -> pd.DataFrame:
             for model_name in model_names:
                 model = build_vfl_model(dataset_name, model_name)
                 artifact = load_saved_artifacts(dataset_name, model_name, num_samples=GAUSSIAN_SAMPLES)
+                clean_images = artifact["clean_images"].to(device)
                 labels = artifact["labels"].to(device)
+                mask = clean_correct_mask(model, clean_images, labels)
+                clean_correct_count = int(mask.sum().item())
+                clean_accuracy_on_attack_batch = clean_correct_count / max(int(labels.size(0)), 1)
 
                 for attack_name in GAUSSIAN_ATTACK_ORDER:
                     adversarial = artifact[resolve_attack_tensor_key(artifact, attack_name)].to(device)
@@ -390,21 +414,26 @@ def compute_blur_resize_rows() -> pd.DataFrame:
                     with torch.no_grad():
                         blur_logits = model(blurred)
                         resize_logits = model(resized)
-                        blur_asr = (blur_logits.argmax(dim=1) != labels).float().mean().item() * 100.0
-                        resize_asr = (resize_logits.argmax(dim=1) != labels).float().mean().item() * 100.0
+                        blur_asr, blur_success_count = clean_correct_asr(blur_logits.argmax(dim=1), labels, mask)
+                        resize_asr, resize_success_count = clean_correct_asr(resize_logits.argmax(dim=1), labels, mask)
                     rows.append(
                         {
                             "model_group": model_group,
                             "dataset": dataset_name,
                             "model": model_name,
                             "attack": attack_name,
+                            "total_samples": int(labels.size(0)),
+                            "clean_correct_count": clean_correct_count,
+                            "clean_accuracy_on_attack_batch": clean_accuracy_on_attack_batch,
+                            "blur_attack_success_count": blur_success_count,
+                            "resize_attack_success_count": resize_success_count,
                             "blur_asr": blur_asr,
                             "resize_asr": resize_asr,
                         }
                     )
                     del adversarial, blurred, resized, blur_logits, resize_logits
 
-                del model, artifact, labels
+                del model, artifact, clean_images, labels, mask
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
 
