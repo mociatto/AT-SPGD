@@ -225,11 +225,11 @@ GAUSSIAN_BLUR_CONFIG = {
     "font_family": "serif",
     "axes_label_fontsize": 10,
     "title_fontsize": 10,
-    "title_pad": 30,
+    "title_pad": 35,
     "tick_label_fontsize": 10,
     "legend_fontsize": 8,
     "legend_loc": "lower center",
-    "legend_bbox_to_anchor": (0.5, 1.02),
+    "legend_bbox_to_anchor": (0.5, 1.05),
     "legend_ncol": 2,
     "figure_dpi": 100,
     "save_dpi": 300,
@@ -923,6 +923,23 @@ def _draw_gaussian_blur_panel(
     else:
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
+
+
+def plot_gaussian_blur_panel(
+    panel_title: str,
+    attack_metrics: Dict[str, Dict[str, float]],
+    panel_group: str,
+) -> Figure:
+    plt.rcParams["font.family"] = GAUSSIAN_BLUR_CONFIG["font_family"]
+    scale = float(GAUSSIAN_BLUR_CONFIG["figsize_scale"])
+    width, height = GAUSSIAN_BLUR_CONFIG["figsize"]
+    fig, ax = plt.subplots(
+        figsize=(width * scale, height * scale),
+        dpi=GAUSSIAN_BLUR_CONFIG["figure_dpi"],
+    )
+    _draw_gaussian_blur_panel(ax, panel_title, attack_metrics, panel_group)
+    plt.tight_layout()
+    return fig
 
 
 def plot_gaussian_blur_comparison(panel_metrics: Dict[str, Dict[str, Any]]) -> Figure:

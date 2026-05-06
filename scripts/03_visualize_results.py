@@ -46,6 +46,7 @@ from src.visualization.plots import (
     plot_average_radial_energy_comparison,
     plot_average_radial_energy_panel,
     plot_gaussian_blur_comparison,
+    plot_gaussian_blur_panel,
     plot_jpeg_compression_comparison,
     plot_jpeg_compression_panel,
     plot_noise_gradcam_sample,
@@ -172,6 +173,15 @@ def export_page(fig: Figure) -> None:
     pdf_export.savefig(fig, bbox_inches="tight")
 
 
+def slugify_label(label: str) -> str:
+    safe = "".join(character.lower() if character.isalnum() else "_" for character in label)
+    return "_".join(part for part in safe.split("_") if part)
+
+
+def export_individual_pdf(fig: Figure, filename: str) -> None:
+    fig.savefig(FIGURE_DIR / filename, format="pdf", bbox_inches="tight")
+
+
 # %%
 VIS_DATASET = "gtsrb"
 VIS_MODEL = "resnet18"
@@ -212,8 +222,13 @@ for dataset_name in ENERGY_DATASETS:
             load_saved_artifacts(dataset_name, model_name, num_samples=ENERGY_SAMPLES)
         ]
 
+for panel_label, vis_dicts in radial_panel_artifacts.items():
+    fig_panel = plot_average_radial_energy_panel(vis_dicts, panel_label=panel_label)
+    export_page(fig_panel)
+    export_individual_pdf(fig_panel, f"03_radial_energy_{slugify_label(panel_label)}.pdf")
+    plt.close(fig_panel)
+
 fig_energy = plot_average_radial_energy_comparison(radial_panel_artifacts)
-export_page(fig_energy)
 display_preview(fig_energy, RADIAL_ENERGY_CONFIG)
 plt.close(fig_energy)
 
@@ -275,8 +290,13 @@ for dataset_name in PARETO_DATASETS:
             model_name,
         )
 
+for panel_label, results in pareto_panel_results.items():
+    fig_panel = plot_pareto_frontier_panel(results, panel_label=panel_label)
+    export_page(fig_panel)
+    export_individual_pdf(fig_panel, f"03_pareto_frontier_{slugify_label(panel_label)}.pdf")
+    plt.close(fig_panel)
+
 fig_pareto = plot_pareto_frontier_comparison(pareto_panel_results)
-export_page(fig_pareto)
 display_preview(fig_pareto, PARETO_FRONTIER_CONFIG)
 plt.close(fig_pareto)
 
@@ -479,8 +499,17 @@ defense_df.to_csv(GAUSSIAN_OUTPUT_CSV, index=False)
 
 defense_panel_metrics = summarize_defense_metrics(defense_df)
 
+for panel_title, panel_data in defense_panel_metrics.items():
+    fig_panel = plot_gaussian_blur_panel(
+        panel_title,
+        panel_data["attack_metrics"],
+        panel_data["group"],
+    )
+    export_page(fig_panel)
+    export_individual_pdf(fig_panel, f"03_blur_resize_{slugify_label(panel_title)}.pdf")
+    plt.close(fig_panel)
+
 fig_gaussian = plot_gaussian_blur_comparison(defense_panel_metrics)
-export_page(fig_gaussian)
 display_preview(fig_gaussian, GAUSSIAN_BLUR_CONFIG)
 plt.close(fig_gaussian)
 display(defense_df)
